@@ -3,7 +3,7 @@
 /* eslint-disable require-jsdoc, no-unused-vars */
 
 var CalendarList = [];
-CalendarList.checkedId = 'Root'; //CalendarList[0].id;
+CalendarList.checkedId = 'Csirtmaster';  // XX //CalendarList[0].id;
 
 function CalendarInfo() {
     this.id = null;
@@ -45,6 +45,7 @@ function hexToRGBA(hex) {
     var calendar;
     var id = 0;
 
+    // XXX
     calendar = new CalendarInfo();
     id += 1;
     calendar.id = 'Csirtmaster'; // String(id);

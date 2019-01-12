@@ -5,30 +5,37 @@
 /* global moment, tui, chance */
 /* global findCalendar, CalendarList, ScheduleList, generateSchedule */
 
+stats = stats || {};
+schedules = schedules  || {};
+members = members || {};
+var changes = {"deleted": [], "created": []};
 
-var stats = {"Root": {"Edvard": 3, "Petr": 2}, "Csirtmaster": {"Edvard": 1, "Petr": 4}};
 
+ScheduleList = schedules; // XX
 
 (function (window, Calendar) {
-    var cal, resizeThrottled;
-    var useCreationPopup = true;
-    var useDetailPopup = true;
-    var datePicker, selectedCalendar;
+    let cal, resizeThrottled;
+    let useDetailPopup = true;
+    let selectedCalendar;
 
     cal = new Calendar('#calendar', {
         defaultView: 'month',
         useCreationPopup: false, //useCreationPopup,
         useDetailPopup: useDetailPopup,
         calendars: CalendarList,
-        month: {startDayOfWeek: 1}
+        month: {
+            startDayOfWeek: 1,
+            workweek: true
+        }
     });
 
-
     Date.prototype.addDays = function (days) {
-        var date = new Date(this.valueOf());
+        let date = new Date(this.valueOf());
         date.setDate(date.getDate() + days);
         return date;
-    }
+    };
+
+
 
     // event handlers
     cal.on({
@@ -41,34 +48,55 @@ var stats = {"Root": {"Edvard": 3, "Petr": 2}, "Csirtmaster": {"Edvard": 1, "Pet
         'clickDayname': function (date) {
             console.log('clickDayname', date);
         },
-        'beforeCreateSchedule': function (e) {
-            console.log('beforeCreateSchedule', e);
+        'beforeCreateSchedule': function (scheduleData) {
+            console.log('beforeCreateSchedule', scheduleData);
 
-            e.title = document.querySelector("#lnb-calendars input[name=person]:checked").value;
-            e.calendarId = CalendarList.checkedId;
-            if (CalendarList.checkedId === "Root") { // XX
+            scheduleData.title = document.querySelector("#lnb-calendars input[name=person]:checked").value;
+            scheduleData.calendarId = CalendarList.checkedId;
+            if (CalendarList.checkedId === "Root") { // XX whole week
                 // Root
-                e.start = e.start.toDate().addDays(1 - e.start.getDay()) // monday
-                e.end = e.start.addDays(4);
+                scheduleData.start = scheduleData.start.toDate().addDays(1 - scheduleData.start.getDay()); // monday
+                scheduleData.end = scheduleData.start.addDays(4);
             } else {
 
             }
-            console.log('Line 62 e(): ', e);
+            console.log('Line 62 e(): ', scheduleData);
 
-            saveNewSchedule(e);
+            let calendar = scheduleData.calendar || findCalendar(scheduleData.calendarId);
+            let schedule = {
+                id: String(chance.guid()),
+                title: scheduleData.title,
+                start: scheduleData.start,
+                end: scheduleData.end,
+                category: 'allday'
+            };
+            if (calendar) {
+                schedule.calendarId = calendar.id;
+            }
+
+            cal.createSchedules([schedule]);
+            // schedule = Object.assign({}, schedule);
+            // schedule.start = schedule.start.getTime();
+            // schedule.end = schedule.end.getTime();
+            changes["created"].push(schedule);
+            savable();
         },
         'beforeUpdateSchedule': function (e) {
+            // changes["?"].push(e.schedule.id); XX
             console.log('beforeUpdateSchedule', e);
             e.schedule.start = e.start;
             e.schedule.end = e.end;
             cal.updateSchedule(e.schedule.id, e.schedule.calendarId, e.schedule);
+            savable();
         },
         'beforeDeleteSchedule': function (e) {
+            changes["deleted"].push(e.schedule.id);
             console.log('beforeDeleteSchedule', e);
             cal.deleteSchedule(e.schedule.id, e.schedule.calendarId);
+            savable();
         },
         'afterRenderSchedule': function (e) {
-            var schedule = e.schedule;
+            let schedule = e.schedule;
             // var element = cal.getElement(schedule.id, schedule.calendarId);
             // console.log('afterRenderSchedule', element);
         },
@@ -91,70 +119,31 @@ var stats = {"Root": {"Edvard": 3, "Petr": 2}, "Csirtmaster": {"Edvard": 1, "Pet
         }
     });
 
-
-    function onClickNavi(e) {
-        var action = getDataAction(e.target);
-
-        switch (action) {
-            case 'move-prev':
-                cal.prev();
-                break;
-            case 'move-next':
-                cal.next();
-                break;
-            case 'move-today':
-                cal.today();
-                break;
-            default:
-                return;
-        }
-
-        setRenderRangeText();
-        setSchedules();
+    $(".save-button").click(function(){
+        $(".save-button").prop("disabled", true);
+        $.ajax({
+            "url": "/change",
+            "method": "post",
+            "data": JSON.stringify(changes),
+            "contentType": "application/json",
+            success: (data) =>{
+                changes = {"deleted": [], "created": []}; // reset changelog
+                alert(data);
+            }
+        });
+    });
+    function savable() {
+        $(".save-button").prop("disabled", false);
     }
 
-
-    function onChangeNewScheduleCalendar(e) {
-        var target = $(e.target).closest('a[role="menuitem"]')[0];
-        var calendarId = getDataAction(target);
-        var calendarNameElement = document.getElementById('calendarName');
-        var calendar = findCalendar(calendarId);
-        var html = [];
-
-        html.push('<span class="calendar-bar" style="background-color: ' + calendar.bgColor + '; border-color:' + calendar.borderColor + ';"></span>');
-        html.push('<span class="calendar-name">' + calendar.name + '</span>');
-
-        calendarNameElement.innerHTML = html.join('');
-
-        selectedCalendar = calendar;
-    }
-
-
-    function saveNewSchedule(scheduleData) {
-        var calendar = scheduleData.calendar || findCalendar(scheduleData.calendarId);
-        var schedule = {
-            id: String(chance.guid()),
-            title: scheduleData.title,
-            start: scheduleData.start,
-            end: scheduleData.end,
-            category: 'allday'
-        };
-        if (calendar) {
-            schedule.calendarId = calendar.id;
-        }
-
-        cal.createSchedules([schedule]);
-
-        //refreshScheduleVisibility();
-    }
 
     function buildPeopleNames() {
         console.log('Line 152 "Zde", stats(): ', "Zde", stats);
         var html = [];
         for (let project in stats) {
-            console.log('Line 155 "ID"(): ', "ID", project,CalendarList.checkedId);
+            console.log('Line 155 "ID"(): ', "ID", project, CalendarList.checkedId);
             if (project === CalendarList.checkedId) {
-                for (let person in stats[project]) {
+                for (let person of members) { // XX stats[project]
                     html.push(`<label>
                         <input name="person" type="radio" value="${person}" checked>
                         <span></span>
@@ -166,18 +155,6 @@ var stats = {"Root": {"Edvard": 3, "Petr": 2}, "Csirtmaster": {"Edvard": 1, "Pet
             }
         }
         document.querySelector("#lnb-calendars > div > .lnb-calendars-item").innerHTML = html.join("\n");
-    }
-
-    function onChangeCalendars(e) {
-        CalendarList.checkedId = e.target.value;
-        var calendarElements = Array.prototype.slice.call(document.querySelectorAll('#calendarList input'));
-        calendarElements.forEach(function (input) {
-            if (input.value !== CalendarList.checkedId) {
-                input.checked = false;
-            }
-        });
-        buildPeopleNames();
-        refreshScheduleVisibility();
     }
 
     function refreshScheduleVisibility() {
@@ -222,14 +199,52 @@ var stats = {"Root": {"Edvard": 3, "Petr": 2}, "Csirtmaster": {"Edvard": 1, "Pet
     }
 
     function setEventListener() {
-        $('#menu-navi').on('click', onClickNavi);
+        $('#menu-navi').on('click', function (e) {
+            var action = getDataAction(e.target);
+            switch (action) {
+                case 'move-prev':
+                    cal.prev();
+                    break;
+                case 'move-next':
+                    cal.next();
+                    break;
+                case 'move-today':
+                    cal.today();
+                    break;
+                default:
+                    return;
+            }
+            setRenderRangeText();
+            setSchedules();
+        });
         //$('.dropdown-menu a[role="menuitem"]').on('click', onClickMenu);
-        $('#lnb-calendars #calendarList').on('change', onChangeCalendars);
+        $('#lnb-calendars #calendarList').on('change', function (e) {
+            console.log('Line 191 "changing value on", e.target.value(): ', "changing value on", e.target.value);
+            CalendarList.checkedId = e.target.value;
+            var calendarElements = Array.prototype.slice.call(document.querySelectorAll('#calendarList input'));
+            calendarElements.forEach(function (input) {
+                if (input.value !== CalendarList.checkedId) {
+                    input.checked = false;
+                }
+            });
+            buildPeopleNames();
+            refreshScheduleVisibility();
+        });
 
-        //$('#btn-save-schedule').on('click', onNewSchedule);
-        //$('#btn-new-schedule').on('click', createNewSchedule);
+        $('#dropdownMenu-calendars-list').on('click', function (e) {
+            var target = $(e.target).closest('a[role="menuitem"]')[0];
+            var calendarId = getDataAction(target);
+            var calendarNameElement = document.getElementById('calendarName');
+            var calendar = findCalendar(calendarId);
+            var html = [];
 
-        $('#dropdownMenu-calendars-list').on('click', onChangeNewScheduleCalendar);
+            html.push('<span class="calendar-bar" style="background-color: ' + calendar.bgColor + '; border-color:' + calendar.borderColor + ';"></span>');
+            html.push('<span class="calendar-name">' + calendar.name + '</span>');
+
+            calendarNameElement.innerHTML = html.join('');
+
+            selectedCalendar = calendar;
+        });
 
         window.addEventListener('resize', resizeThrottled);
     }
@@ -265,5 +280,4 @@ var stats = {"Root": {"Edvard": 3, "Petr": 2}, "Csirtmaster": {"Edvard": 1, "Pet
         );
     });
     calendarList.innerHTML = html.join('\n');
-
 })();
