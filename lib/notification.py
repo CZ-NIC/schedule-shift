@@ -44,7 +44,7 @@ class Notification:
         if self.subject:
             subject += " (" + ",".join(self.subject) + ")"
 
-        text = "\n".join(self.text) + "\n\n" + "You received this mail from a shift-scheduler instance."
+        text = "<br>\r\n".join(self.text) + "<br>\r\n<br>\r\n" + f"Wanna plan <a href='{Config.config.get('general','application_url')}'>a shift</a>?"
 
         email_from = Config.config.get("general", "email_from")
         msg = MIMEText(text, "html", "utf-8")
@@ -55,13 +55,12 @@ class Notification:
         msg["Message-ID"] = make_msgid()
 
         if send:
-            # self.smtp.sendmail(email_from, self.email_to, msg.as_string().encode('ascii'))
+            self.smtp.sendmail(email_from, "edvard.rejthar+test@nic.cz" , msg.as_string().encode('ascii')) # XXXX self.email_to
             pass
         if Config.verbose: # not send
             msg.set_payload("")
             print("\n----------------\n\n", msg, text)
 
-        return msg
 
     @classmethod
     def send(cls, send=True):

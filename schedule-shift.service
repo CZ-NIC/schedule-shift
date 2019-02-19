@@ -1,0 +1,12 @@
+[Unit]
+Description=uWSGI server instance configured to serve MDMaug
+[Service]
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/var/www/.local/bin"
+WorkingDirectory=/opt/schedule-shift
+ExecStart=/usr/local/bin/uwsgi -s /tmp/schedule-shift.sock --manage-script-name --ini /opt/schedule-shift/service.ini
+User=www-data
+Group=www-data
+Restart=on-failure
+RestartSec=10s
+[Install]
+WantedBy=multi-user.target

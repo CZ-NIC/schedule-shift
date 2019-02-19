@@ -37,7 +37,7 @@ fallback e-mail:
     If not set, we notify the e-mail specified in 'who' parameter or all project members (if 'who' is set to 'owner' or 'all').
     If set to 'mute', nobody'll be notified.
     
-If notify keyword is preceded by --debug flag, no e-mail is sent and the info is printed.  
+If --send flag is not present, no e-mails are sent.  
 
 Examples – send the notification: 
      to all members of project my_project:        
@@ -83,6 +83,7 @@ def homepage():
     calendar = Config.calendar()
     schedules = []
     projects = Config.projects
+    Config.reset_projects()
 
     for event in caldav2events(calendar.events()):
         project, name = event.project_and_name()  # parse out the member name
@@ -105,6 +106,7 @@ def homepage():
 
     # modify projects so that we see relative number of worked out days (to see who should take the shift)
     for project in projects.values():
+        print(min(project, key=project.get), project[min(project, key=project.get)])
         m = project[min(project, key=project.get)]
         for member in project:
             project[member] -= m
@@ -140,14 +142,12 @@ def change():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Schedule shift via nice GUI to a SOGO calendar", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument('-v', '--verbose', action='store_true', help="Print out the mail contents.")
-    parser.add_argument('--debug', action='store_true', help="No mails will be sent (and turns on verbose flag).")
+    #parser.add_argument('-v', '--verbose', action='store_true', help="Print out the mail contents.")
+    parser.add_argument('--send', action='store_true', help="Send e-mails. (By default, no mails are sent.)")
     parser.add_argument('notify',  help=__help__, nargs='+')
     args = parser.parse_args()
 
-    if args.debug:
-        args.verbose = True
-    Config.verbose = args.verbose
+    Config.verbose = True # args.verbose
 
     if sys.argv[1] == "notify":
         today = datetime.today().date()
@@ -163,7 +163,6 @@ if __name__ == "__main__":
         for p in " ".join(args.notify[1:]).split(","):
             pp = p.strip().split(" ")
             i = pp + defaults[len(pp):]
-            print(i)
             if i[0] in ["all", ""]:
                 for pr in Config.projects:
                     instructions.append((pr, *i[1:]))
@@ -188,12 +187,14 @@ if __name__ == "__main__":
                 project_e, name = event.project_and_name()
                 if project == project_e:
                     found = True
-                    if state in ["any", "starting"] and today == event["dtstart"].dt:
-                        status = "starting"
-                    elif state in ["any", "ending"] and today == event["dtend"].dt:
+                    starting = event["dtstart"].dt
+                    ending = (event['dtend'].dt - timedelta(1))
+                    if state in ["any", "starting"] and today == starting:
+                        status = f"starting (ending on {ending.isoformat()})"
+                    elif state in ["any", "ending"] and today == ending:
                         status = "ending"
-                    elif state in ["any", "proceeding"] and today not in [event["dtstart"].dt, event["dtend"].dt]:
-                        status = "proceeding"
+                    elif state in ["any", "proceeding"] and today not in [starting, ending]:
+                        status = f"proceeding (ending on {ending.isoformat()})"
                     else:
                         continue
 
@@ -217,6 +218,6 @@ if __name__ == "__main__":
                 if fallback == "all":
                     fallback = Config.get_member_mails(project)
                 Notification.add(fallback, f"{project} has no registered shift!", highlight=project)
-        Notification.send(not args.debug)
+        Notification.send(args.send)
     else:
         print(__help__)

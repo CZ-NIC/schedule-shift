@@ -141,6 +141,7 @@ for (let project_id in projects) {
             "contentType": "application/json",
             "success": (data) => {
                 dirty = false;
+                $("#menu-navi [data-action!=save]").prop("disabled", false)
                 changes = {"deleted": [], "created": []}; // reset changelog
                 alert(data);
             }
@@ -148,6 +149,7 @@ for (let project_id in projects) {
     });
 
     function savable() {
+        $("#menu-navi [data-action!=save]").prop("disabled", true); // XX we have to save before changing a single month :(
         $(".save-button").prop("disabled", false);
         dirty = true;
     }

@@ -1,25 +1,16 @@
-XX to be copied from config.ini
-
 [general]
-error_mail =
+smtp_server = localhost
+email_from =
 calendar_url =
 calendar_username =
 calendar_password =
+application_url =
 
 [team]
-John Smith = john.smith@example.cz
-Peter = 
-Laura = 
+John Smith = john.smith@example.com
+Peter =
+Laura =
 
 [projects]
 First project = John Smith, Laura
 Second project = Laura, Peter
-
-[Third project]
-# "name" = True (person works for the project) OR start day, (end date, (weight)) OR list of (start date, end date OR None, coeficient). You may use multiline strings.
-# optional whole_week
-whole_week = yes
-John Smith = True # John is working since ever
-Peter = 2019-01-01
-Laura = 2017-01-01, 2017-06-01 # Laura worked few months in 2017
-    2019-01-01, None, 0.5 # Laura started again in 2019 on a half-shift
