@@ -3,15 +3,16 @@
 /* eslint-disable require-jsdoc, no-unused-vars */
 
 var CalendarList = [];
-CalendarList.checkedId = 'Csirtmaster';  // XX //CalendarList[0].id;
+
+let colors = ['#9e5fff', '#00a9ff']
+let color_i = 0;
 
 function CalendarInfo() {
     this.id = null;
     this.name = null;
     this.checked = true;
-    this.color = null;
-    this.bgColor = null;
-    this.borderColor = null;
+    this.color = '#ffffff';
+    this.dragBgColor = this.borderColor = this.bgColor = colors[color_i++];
 }
 
 function addCalendar(calendar) {
@@ -41,29 +42,4 @@ function hexToRGBA(hex) {
     return rgba;
 }
 
-(function() {
-    var calendar;
-    var id = 0;
-
-    // XXX
-    calendar = new CalendarInfo();
-    id += 1;
-    calendar.id = 'Csirtmaster'; // String(id);
-    calendar.name = 'Csirtmaster';
-    calendar.color = '#ffffff';
-    calendar.bgColor = '#9e5fff';
-    calendar.dragBgColor = '#9e5fff';
-    calendar.borderColor = '#9e5fff';
-    addCalendar(calendar);
-
-    calendar = new CalendarInfo();
-    id += 1;
-    calendar.id = 'Root'; //String(id);
-    calendar.whole_week = true;
-    calendar.name = 'Root';
-    calendar.color = '#ffffff';
-    calendar.bgColor = '#00a9ff';
-    calendar.dragBgColor = '#00a9ff';
-    calendar.borderColor = '#00a9ff';
-    addCalendar(calendar);
-})();
+CalendarList.checkedId = null;

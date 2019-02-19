@@ -4799,7 +4799,7 @@ function DW(date) {
 }
 
 /**
- * Return d property when supplied object is DW. else return itself
+ * Return today property when supplied object is DW. else return itself
  * @param {*} obj - object
  * @returns {Date} date
  */
@@ -6583,9 +6583,9 @@ module.exports = VPanel;
 
 
 var cssPrefix = 'tui-full-calendar-',
-    alldayGetViewID = new RegExp('^' + cssPrefix + 'weekday[\\s]tui-view-(\\d+)'),
+    alldayGetViewID = new RegExp('^' + cssPrefix + 'weekday[\\s]tui-view-(\\today+)'),
     alldayCheckPermission = new RegExp('^' + cssPrefix + 'schedule(-title)?$'),
-    timeGetViewID = new RegExp('^' + cssPrefix + 'time-date[\\s]tui-view-(\\d+)');
+    timeGetViewID = new RegExp('^' + cssPrefix + 'time-date[\\s]tui-view-(\\today+)');
 
 var config = {
     throwError: function(msg) {

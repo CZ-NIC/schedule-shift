@@ -5,13 +5,27 @@
 /* global moment, tui, chance */
 /* global findCalendar, CalendarList, ScheduleList, generateSchedule */
 
-stats = stats || {};
-schedules = schedules  || {};
-members = members || {};
+projects = projects || {};
 var changes = {"deleted": [], "created": []};
 
 
-ScheduleList = schedules; // XX
+
+// Initialize calendars
+for (let project_id in projects) {
+    let calendar = new CalendarInfo();
+    calendar.id = calendar.name = project_id;
+    console.log('Line 269 project_id, calendar.id(): ', project_id, calendar.id);
+    addCalendar(calendar);
+    console.log('Line 271 calendar(): ', calendar);
+
+    // calendar = new CalendarInfo();
+    // calendar.id = calendar.name = project_id + "2";
+    // addCalendar(calendar);
+    if (!CalendarList.checkedId) {
+        CalendarList.checkedId = project_id;
+    }
+}
+
 
 (function (window, Calendar) {
     let cal, resizeThrottled;
@@ -36,7 +50,6 @@ ScheduleList = schedules; // XX
     };
 
 
-
     // event handlers
     cal.on({
         'clickMore': function (e) {
@@ -53,15 +66,11 @@ ScheduleList = schedules; // XX
 
             scheduleData.title = document.querySelector("#lnb-calendars input[name=person]:checked").value;
             scheduleData.calendarId = CalendarList.checkedId;
-            if (CalendarList.checkedId === "Root") { // XX whole week
-                // Root
-                scheduleData.start = scheduleData.start.toDate().addDays(1 - scheduleData.start.getDay()); // monday
-                scheduleData.end = scheduleData.start.addDays(4);
-            } else {
-
-            }
-            console.log('Line 62 e(): ', scheduleData);
-
+            // XX whole week only events possibility
+            // if (CalendarList.checkedId === "") { //
+            //     scheduleData.start = scheduleData.start.toDate().addDays(1 - scheduleData.start.getDay()); // monday
+            //     scheduleData.end = scheduleData.start.addDays(4);
+            // }
             let calendar = scheduleData.calendar || findCalendar(scheduleData.calendarId);
             let schedule = {
                 id: String(chance.guid()),
@@ -82,11 +91,14 @@ ScheduleList = schedules; // XX
             savable();
         },
         'beforeUpdateSchedule': function (e) {
-            // changes["?"].push(e.schedule.id); XX
             console.log('beforeUpdateSchedule', e);
-            e.schedule.start = e.start;
-            e.schedule.end = e.end;
-            cal.updateSchedule(e.schedule.id, e.schedule.calendarId, e.schedule);
+            if (e.start && e.end) {
+                e.schedule.start = e.start;
+                e.schedule.end = e.end;
+                console.log('Line 101 e.start(): ', e);
+                cal.updateSchedule(e.schedule.id, e.schedule.calendarId, e.schedule);
+                changes["created"].push(e.schedule);
+            }
             savable();
         },
         'beforeDeleteSchedule': function (e) {
@@ -119,35 +131,43 @@ ScheduleList = schedules; // XX
         }
     });
 
-    $(".save-button").click(function(){
+    let dirty = false;
+    $(".save-button").click(function () {
         $(".save-button").prop("disabled", true);
         $.ajax({
             "url": "/change",
             "method": "post",
             "data": JSON.stringify(changes),
             "contentType": "application/json",
-            success: (data) =>{
+            "success": (data) => {
+                dirty = false;
                 changes = {"deleted": [], "created": []}; // reset changelog
                 alert(data);
             }
         });
     });
+
     function savable() {
         $(".save-button").prop("disabled", false);
+        dirty = true;
+    }
+
+    window.onbeforeunload = function () {
+        if (dirty) {
+            return "Unsaved changes. Are you sure?";
+        }
     }
 
 
     function buildPeopleNames() {
-        console.log('Line 152 "Zde", stats(): ', "Zde", stats);
         var html = [];
-        for (let project in stats) {
-            console.log('Line 155 "ID"(): ', "ID", project, CalendarList.checkedId);
-            if (project === CalendarList.checkedId) {
-                for (let person of members) { // XX stats[project]
+        for (let [project_id, project] of Object.entries(projects)) {
+            if (project_id === CalendarList.checkedId) {
+                for (let [person, count] of Object.entries(project)) {
                     html.push(`<label>
                         <input name="person" type="radio" value="${person}" checked>
                         <span></span>
-                        <strong>${person} ${stats[project][person]}</strong>
+                        <strong>${person} ${count}</strong>
                     </label>
                     <br />`);
                 }
@@ -219,9 +239,8 @@ ScheduleList = schedules; // XX
         });
         //$('.dropdown-menu a[role="menuitem"]').on('click', onClickMenu);
         $('#lnb-calendars #calendarList').on('change', function (e) {
-            console.log('Line 191 "changing value on", e.target.value(): ', "changing value on", e.target.value);
             CalendarList.checkedId = e.target.value;
-            var calendarElements = Array.prototype.slice.call(document.querySelectorAll('#calendarList input'));
+            let calendarElements = Array.prototype.slice.call(document.querySelectorAll('#calendarList input'));
             calendarElements.forEach(function (input) {
                 if (input.value !== CalendarList.checkedId) {
                     input.checked = false;
@@ -258,6 +277,8 @@ ScheduleList = schedules; // XX
     }, 50);
 
     window.cal = cal;
+
+
     buildPeopleNames();
 
 
@@ -269,9 +290,13 @@ ScheduleList = schedules; // XX
 
 // set calendars
 (function () {
+
     var calendarList = document.getElementById('calendarList');
     var html = [];
+
     CalendarList.forEach(function (calendar) {
+        console.log('Line 298 CalendarList.checkedId(): ', CalendarList.checkedId === calendar.id);
+
         html.push('<div class="lnb-calendars-item"><label>' +
             `<input type="checkbox" class="tui-full-calendar-checkbox-round" value="${calendar.id}" ${calendar.id === CalendarList.checkedId ? "checked" : ""}>` +
             `<span style="border-color:${calendar.borderColor}; background-color: ${calendar.id === CalendarList.checkedId ? calendar.borderColor : "transparent"};"></span>` +
