@@ -89,10 +89,18 @@ def homepage():
         project, name = event.project_and_name()  # parse out the member name
         if project:
             # count number of working days
+            # Different DTEND formats: We have to shorten the end date:
+            # Ex: days 2019-03-02 and 2019-03-03 in SoGo 2019-03-02 – 04, in Tui.Calendar 2019-03-02 – 03
             dates = rrule.rruleset()
             dates.rrule(rrule.rrule(rrule.DAILY, dtstart=event["dtstart"].dt, until=(event["dtend"].dt - timedelta(1))))
             dates.exrule(rrule.rrule(rrule.DAILY, byweekday=(rrule.SA, rrule.SU), dtstart=event["dtstart"].dt))
             projects[project][name] += dates.count()
+
+            print(str(event["uid"]), str(event["dtstart"].dt), str(event["dtend"].dt))
+            #if event["uid"] == "d0b2edae-f15d-541b-982b-e5b66d5751f9":
+            # if event["uid"] == "3943-5C990600-2F-13558D40":
+            #     import ipdb;
+            #     ipdb.set_trace()
 
             schedules.append({
                 "id": str(event["uid"]),
@@ -101,7 +109,7 @@ def homepage():
                 "title": str(name),
                 "category": 'time',
                 "start": str(event["dtstart"].dt),
-                "end": str(event["dtend"].dt - timedelta(1))
+                "end": str(event["dtend"].dt - timedelta(1))  # see above: different DTEND formats
             })
 
     # modify projects so that we see relative number of worked out days (to see who should take the shift)
@@ -116,6 +124,7 @@ def homepage():
 
 @app.route("/change", methods=['POST'])
 def change():
+    """ Change (create) or delete an event by POST request """
     calendar = Config.calendar()
     changes = request.get_json()
     for uid in changes["deleted"]:
@@ -132,8 +141,15 @@ def change():
         event = iEvent()
         event.add('uid', schedule["id"])
         event.add('summary', schedule["calendarId"] + " " + schedule["title"])
-        event.add('dtstart', parse(schedule["start"]["_date"]).astimezone().date())
-        event.add('dtend', parse(schedule["end"]["_date"]).astimezone().date() + timedelta(1))
+        # event.add('dtstart', parse(schedule["start"]["_date"]).astimezone().date()+timedelta(1))
+
+        # print(schedule)
+        # import ipdb; ipdb.set_trace()
+
+        event.add('dtstart', parse(schedule["start-ics"]))
+        event.add('dtend', parse(schedule["end-ics"]))
+        # event.add('dtstart', parse(schedule["start"]["_date"]))
+        # event.add('dtend', parse(schedule["end"]["_date"]))
         c.add_component(event)
         calendar.add_event(c.to_ical().decode("utf-8"))
 
@@ -189,6 +205,13 @@ if __name__ == "__main__":
                     found = True
                     starting = event["dtstart"].dt
                     ending = (event['dtend'].dt - timedelta(1))
+
+                    # the event may be created in SoGo, in Tui or otherwise, there might be datetime or date – we need compare date
+                    if type(starting) is datetime:
+                        starting = starting.date()
+                    if type(ending) is datetime:
+                        ending = ending.date()
+
                     if state in ["any", "starting"] and today == starting:
                         status = f"starting (ending on {ending.isoformat()})"
                     elif state in ["any", "ending"] and today == ending:

@@ -27,17 +27,35 @@ Every second week
 
 # Deployment
 
+Systemd configuration `misc/schedule-shift.service` to `/etc/systemd/system/schedule-shift.service`
+
+Nginx:
+
+```nginx
+server {
+    listen 7000;
+    server_name mdmaug.csirt.office.nic.cz;
+
+    location / {
+        include uwsgi_params;
+        uwsgi_pass unix:/tmp/schedule-shift.sock;
+    }
+}
+```
+
+Start
+`service schedule-shift start`
+
+Check status
+`service schedule-shift status`
+
+If that's all right, let's make the service permanent:
+`systemctl enable schedule-shift`
+
 Cron:
-5 30 * * 1-5 python3.6 /opt/schedule-shift/scheduler.py notify all starting --send
+
+```cron
+30 5 * * 1-5 python3.6 /opt/schedule-shift/scheduler.py notify all starting --send
+```
 
 
-Deprecated?
-
-[Third project]
-# "name" = True (person works for the project) OR start day, (end date, (weight)) OR list of (start date, end date OR None, coeficient). You may use multiline strings.
-# optional whole_week
-whole_week = yes
-John Smith = True # John is working since ever
-Peter = 2019-01-01
-Laura = 2017-01-01, 2017-06-01 # Laura worked few months in 2017
-    2019-01-01, None, 0.5 # Laura started again in 2019 on a half-shift

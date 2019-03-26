@@ -55,7 +55,7 @@ class Notification:
         msg["Message-ID"] = make_msgid()
 
         if send:
-            self.smtp.sendmail(email_from, "edvard.rejthar+test@nic.cz" , msg.as_string().encode('ascii')) # XXXX self.email_to
+            self.smtp.sendmail(email_from, self.email_to , msg.as_string().encode('ascii'))
             pass
         if Config.verbose: # not send
             msg.set_payload("")

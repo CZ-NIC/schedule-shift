@@ -1,6 +1,6 @@
 /*!
  * TOAST UI Calendar
- * @version 1.7.0 | Wed Aug 08 2018
+ * @version 1.11.0 | Thu Mar 21 2019
  * @author NHNEnt FE Development Lab <dl_javascript@nhnent.com>
  * @license MIT
  */
@@ -996,7 +996,7 @@ function template(templateSpec, env) {
 
   templateSpec.main.decorator = templateSpec.main_d;
 
-  // Note: Using env.VM references rather than local var references throughout this project_ to allow
+  // Note: Using env.VM references rather than local var references throughout this section to allow
   // for external users to override these as psuedo-supported APIs.
   env.VM.checkRevision(templateSpec.compiler);
 
@@ -1489,17 +1489,18 @@ module.exports = g;
 
 var util = __webpack_require__(/*! tui-code-snippet */ "tui-code-snippet");
 var Calendar = __webpack_require__(/*! ./js/factory/calendar */ "./src/js/factory/calendar.js");
+var GA_TRACKING_ID = 'UA-129951699-1';
 
 __webpack_require__(/*! ./css/main.styl */ "./src/css/main.styl");
 __webpack_require__(/*! ./js/view/template/helper */ "./src/js/view/template/helper.js");
 
 if (util.sendHostname) {
-    util.sendHostname('calendar');
+    util.sendHostname('calendar', GA_TRACKING_ID);
 }
 
 // for jquery
-if (global.$) {
-    global.$.fn.tuiCalendar = function() {
+if (global.jQuery) {
+    global.jQuery.fn.tuiCalendar = function() {
         var options, instance;
 
         var el = this.get(0);
@@ -1508,7 +1509,7 @@ if (global.$) {
         if (el) {
             options = util.pick(args, 0) || {};
 
-            instance = global.$.data(el, 'tuiCalendar');
+            instance = global.jQuery.data(el, 'tuiCalendar');
 
             if (instance) {
                 if (typeof options === 'string' && instance[options]) {
@@ -1516,7 +1517,7 @@ if (global.$) {
                 }
             } else {
                 instance = new Calendar(el, options);
-                global.$.data(el, 'tuiCalendar', instance);
+                global.jQuery.data(el, 'tuiCalendar', instance);
             }
         }
 
@@ -4799,7 +4800,7 @@ function DW(date) {
 }
 
 /**
- * Return today property when supplied object is DW. else return itself
+ * Return d property when supplied object is DW. else return itself
  * @param {*} obj - object
  * @returns {Date} date
  */
@@ -5785,7 +5786,6 @@ function createDateWithSingleArg(arg) {
     } else {
         throw new Error('Invalid Type');
     }
-
     return new Date(time - getCustomTimezoneOffset(time) + getTimezoneOffset(time));
 }
 
@@ -6583,9 +6583,9 @@ module.exports = VPanel;
 
 
 var cssPrefix = 'tui-full-calendar-',
-    alldayGetViewID = new RegExp('^' + cssPrefix + 'weekday[\\s]tui-view-(\\today+)'),
+    alldayGetViewID = new RegExp('^' + cssPrefix + 'weekday[\\s]tui-view-(\\d+)'),
     alldayCheckPermission = new RegExp('^' + cssPrefix + 'schedule(-title)?$'),
-    timeGetViewID = new RegExp('^' + cssPrefix + 'time-date[\\s]tui-view-(\\today+)');
+    timeGetViewID = new RegExp('^' + cssPrefix + 'time-date[\\s]tui-view-(\\d+)');
 
 var config = {
     throwError: function(msg) {
@@ -6788,8 +6788,8 @@ Base.prototype.updateSchedule = function(schedule, options) {
         schedule.set('title', options.title);
     }
 
-    if (options.isAllDay) {
-        schedule.set('isAllDay', options.isAllDay);
+    if (options.body) {
+        schedule.set('body', options.body);
     }
 
     if (options.start || options.end) {
@@ -6814,6 +6814,10 @@ Base.prototype.updateSchedule = function(schedule, options) {
 
     if (options.origin) {
         schedule.set('origin', options.origin);
+    }
+
+    if (!util.isUndefined(options.isAllDay)) {
+        schedule.set('isAllDay', options.isAllDay);
     }
 
     if (!util.isUndefined(options.isPending)) {
@@ -7000,16 +7004,6 @@ Base.prototype.clearSchedules = function() {
 Base.prototype.setTheme = function(theme) {
     return this.theme.setStyles(theme);
 };
-
-/**
- * @typedef {Calendar}
- * @property {string|number} id - calendar id
- * @property {string} name - calendar name
- * @property {string} color - text color when schedule is displayed
- * @property {string} bgColor - background color schedule is displayed
- * @property {string} borderColor - color of left border or bullet point when schedule is displayed
- * @property {boolean} [checked] - whether to show calendar's schedules or not
- */
 
 /**
  * Set calendar list
@@ -7538,8 +7532,9 @@ var util = __webpack_require__(/*! tui-code-snippet */ "tui-code-snippet");
 var Collection = __webpack_require__(/*! ../../common/collection */ "./src/js/common/collection.js");
 var array = __webpack_require__(/*! ../../common/array */ "./src/js/common/array.js");
 var datetime = __webpack_require__(/*! ../../common/datetime */ "./src/js/common/datetime.js");
+var TZDate = __webpack_require__(/*! ../../common/timezone */ "./src/js/common/timezone.js").Date;
 
-var MILLISECONDS_SCHEDULE_MIN_DURATION = datetime.MILLISECONDS_SCHEDULE_MIN_DURATION;
+var SCHEDULE_MIN_DURATION = datetime.MILLISECONDS_SCHEDULE_MIN_DURATION;
 
 /**
  * @mixin Base.Week
@@ -7559,6 +7554,8 @@ var Week = {
         var row,
             col,
             schedule,
+            start,
+            end,
             map = [],
             cursor = [],
             maxColLen = Math.max.apply(null, util.map(matrix, function(col) {
@@ -7570,7 +7567,14 @@ var Week = {
             schedule = util.pick(matrix, row, col);
 
             while (schedule) {
-                cursor.push([schedule.getStarts().getTime(), schedule.getEnds().getTime()]);
+                start = schedule.getStarts().getTime() - datetime.millisecondsFrom('minutes', schedule.valueOf().goingDuration);
+                end = schedule.getEnds().getTime() + datetime.millisecondsFrom('minutes', schedule.valueOf().comingDuration);
+
+                if (Math.abs(end - start) < SCHEDULE_MIN_DURATION) {
+                    end += SCHEDULE_MIN_DURATION;
+                }
+
+                cursor.push([start, end]);
 
                 row += 1;
                 schedule = util.pick(matrix, row, col);
@@ -7647,9 +7651,12 @@ var Week = {
                     startTime = viewModel.getStarts().getTime();
                     endTime = viewModel.getEnds().getTime();
 
-                    if (Math.abs(endTime - startTime) < MILLISECONDS_SCHEDULE_MIN_DURATION) {
-                        endTime += MILLISECONDS_SCHEDULE_MIN_DURATION;
+                    if (Math.abs(endTime - startTime) < SCHEDULE_MIN_DURATION) {
+                        endTime += SCHEDULE_MIN_DURATION;
                     }
+
+                    startTime -= datetime.millisecondsFrom('minutes', viewModel.valueOf().goingDuration);
+                    endTime += datetime.millisecondsFrom('minutes', viewModel.valueOf().comingDuration);
 
                     endTime -= 1;
 
@@ -7674,17 +7681,20 @@ var Week = {
      * @param {Date} start - start date.
      * @param {Date} end - end date.
      * @param {Collection} time - view model collection.
+     * @param {number} hourStart - start hour to be shown
+     * @param {number} hourEnd - end hour to be shown
      * @returns {object} view model for time part.
      */
-    getViewModelForTimeView: function(start, end, time) {
+    getViewModelForTimeView: function(start, end, time, hourStart, hourEnd) {
         var self = this,
             ymdSplitted = this.splitScheduleByDateRange(start, end, time),
             result = {};
 
+        var _getViewModel = Week._makeGetViewModelFuncForTimeView(hourStart, hourEnd);
+
         util.forEach(ymdSplitted, function(collection, ymd) {
-            var viewModels = collection.sort(array.compare.schedule.asc),
-                collisionGroups,
-                matrices;
+            var viewModels = _getViewModel(collection);
+            var collisionGroups, matrices;
 
             collisionGroups = self.Core.getCollisionGroup(viewModels);
             matrices = self.Core.getMatrices(collection, collisionGroups);
@@ -7694,6 +7704,51 @@ var Week = {
         });
 
         return result;
+    },
+
+    /**
+     * make view model function depending on start and end hour
+     * if time view option has start or end hour condition
+     * it add filter
+     * @param {number} hourStart - start hour to be shown
+     * @param {number} hourEnd - end hour to be shown
+     * @returns {function} function
+     */
+    _makeGetViewModelFuncForTimeView: function(hourStart, hourEnd) {
+        if (hourStart === 0 && hourEnd === 24) {
+            return function(collection) {
+                return collection.sort(array.compare.schedule.asc);
+            };
+        }
+
+        return function(collection) {
+            return collection.find(Week._makeHourRangeFilter(hourStart, hourEnd))
+                .sort(array.compare.schedule.asc);
+        };
+    },
+
+    /**
+     * make a filter function that is not included range of start, end hour
+     * @param {number} hStart - hour start
+     * @param {number} hEnd - hour end
+     * @returns {function} - filtering function
+     */
+    _makeHourRangeFilter: function(hStart, hEnd) {
+        return function(schedule) {
+            var ownHourStart = schedule.model.start;
+            var ownHourEnd = schedule.model.end;
+            var yyyy = ownHourStart.getFullYear();
+            var mm = ownHourStart.getMonth();
+            var dd = ownHourStart.getDate();
+
+            var hourStart = new TZDate(yyyy, mm, dd).setHours(hStart);
+            var hourEnd = new TZDate(yyyy, mm, dd).setHours(hEnd);
+
+            return (ownHourStart >= hourStart && ownHourStart < hourEnd) ||
+                (ownHourEnd > hourStart && ownHourEnd <= hourEnd) ||
+                (ownHourStart < hourStart && ownHourEnd > hourStart) ||
+                (ownHourEnd > hourEnd && ownHourStart < hourEnd);
+        };
     },
 
     /**********
@@ -7756,13 +7811,16 @@ var Week = {
      * @param {Date} end end date.
      * @param {Array.<object>} panels - schedule panels like 'milestone', 'task', 'allday', 'time'
      * @param {function[]} [andFilters] - optional filters to applying search query
+     * @param {Object} options - week view options
      * @returns {object} schedules grouped by dates.
      */
-    findByDateRange: function(start, end, panels, andFilters) {
+    findByDateRange: function(start, end, panels, andFilters, options) {
         var ctrlCore = this.Core,
             ctrlWeek = this.Week,
             filter = ctrlCore.getScheduleInDateRangeFilter(start, end),
             scheduleTypes = util.pluck(panels, 'name'),
+            hourStart = util.pick(options, 'hourStart'),
+            hourEnd = util.pick(options, 'hourEnd'),
             modelColl,
             group;
 
@@ -7778,7 +7836,7 @@ var Week = {
             if (panel.type === 'daygrid') {
                 group[name] = ctrlWeek.getViewModelForAlldayView(start, end, group[name]);
             } else if (panel.type === 'timegrid') {
-                group[name] = ctrlWeek.getViewModelForTimeView(start, end, group[name]);
+                group[name] = ctrlWeek.getViewModelForTimeView(start, end, group[name], hourStart, hourEnd);
             }
         });
 
@@ -7886,101 +7944,343 @@ var mmin = Math.min;
 /**
  * Schedule information
  * @typedef {object} Schedule
- * @property {string} id - unique schedule id depends on calendar id
- * @property {string} calendarId - unique calendar id
- * @property {string} title - schedule title
- * @property {string|TZDate} start - start time. It's 'string' for input. It's 'TZDate' for output like event handler.
- * @property {string|TZDate} end - end time. It's 'string' for input. It's 'TZDate' for output like event handler.
- * @property {boolean} isAllDay - all day schedule
- * @property {string} category - schedule type('milestone', 'task', allday', 'time')
- * @property {string} dueDateClass - task schedule type string
+ * @property {string} [id] - The unique schedule id depends on calendar id
+ * @property {string} calendarId - The unique calendar id
+ * @property {string} [title] - The schedule title
+ * @property {string} [body] - The schedule body text which is text/plain
+ * @property {string|TZDate} [start] - The start time. It's 'string' for input. It's 'TZDate' for output like event handler.
+ * @property {string|TZDate} [end] - The end time. It's 'string' for input. It's 'TZDate' for output like event handler.
+ * @property {number} [goingDuration] - The travel time: Going duration minutes
+ * @property {number} [comingDuration] - The travel time: Coming duration minutes
+ * @property {boolean} [isAllDay] - The all day schedule
+ * @property {string} [category] - The schedule type('milestone', 'task', allday', 'time')
+ * @property {string} [dueDateClass] - The task schedule type string
  *                                   (any string value is ok and mandatory if category is 'task')
- * @property {string} location - location
- * @property {Array.<string>} attendees - attendees
- * @property {any} recurrenceRule - recurrence rule
- * @property {boolean} isPending - in progress flag to do something like network job(The schedule will be transparent.)
- * @property {boolean} isFocused - focused schedule flag
- * @property {boolean} isVisible - schedule visibility flag
- * @property {boolean} isReadOnly - schedule read-only flag
- * @property {boolean} isPrivate - private schedule
- * @property {string} [color] - schedule text color
- * @property {string} [bgColor] - schedule background color
- * @property {string} [dragBgColor] - schedule background color when dragging it
- * @property {string} [borderColor] - schedule left border color
- * @property {string} customStyle - schedule's custom css class
- * @property {any} raw - user data
+ * @property {string} [location] - The location
+ * @property {Array.<string>} [attendees] - The attendees
+ * @property {string} [recurrenceRule] - The recurrence rule
+ * @property {boolean} [isPending] - The in progress flag to do something like network job(The schedule will be transparent.)
+ * @property {boolean} [isFocused] - The focused schedule flag
+ * @property {boolean} [isVisible] - The schedule visibility flag
+ * @property {boolean} [isReadOnly] - The schedule read-only flag
+ * @property {boolean} [isPrivate] - The private schedule
+ * @property {string} [color] - The schedule text color
+ * @property {string} [bgColor] - The schedule background color
+ * @property {string} [dragBgColor] - The schedule background color when dragging it
+ * @property {string} [borderColor] - The schedule left border color
+ * @property {string} [customStyle] - The schedule's custom css class
+ * @property {any} [raw] - The user data
+ * @property {string} [state] - The schedule's state ('busy', 'free')
  */
 
 /**
  * Template functions to support customer renderer
  * @typedef {object} Template
- * @property {function} [milestoneTitle] - milestone title(at left column) template function
- * @property {function} [milestone] - milestone template function
-   @property {function} [taskTitle] - task title(at left column) template function
- * @property {function} [task] - task template function
- * @property {function} [alldayTitle] - allday title(at left column) template function
- * @property {function} [allday] - allday template function
- * @property {function} [time] - time template function
- * @property {function} [monthMoreTitleDate] - month more layer title template function
- * @property {function} [monthMoreClose] - month more layer close button template function
- * @property {function} [monthGridHeader] - month grid header(date, decorator, title) template function
- * @property {function} [monthGridFooter] - month grid footer(date, decorator, title) template function
- * @property {function} [monthGridHeaderExceed] - month grid header(exceed schedule count) template function
- * @property {function} [monthGridFooterExceed] - month grid footer(exceed schedule count) template function
- * @property {function} [weekDayname] - weekly dayname template function
- *  @property {function} [monthDayname] - monthly dayname template function
+ * @property {function} [milestoneTitle] - The milestone title(at left column) template function
+ * @property {function} [milestone] - The milestone template function
+ * @property {function} [taskTitle] - The task title(at left column) template function
+ * @property {function} [task] - The task template function
+ * @property {function} [alldayTitle] - The allday title(at left column) template function
+ * @property {function} [allday] - The allday template function
+ * @property {function} [time] - The time template function
+ * @property {function} [goingDuration] - The travel time(going duration) template function
+ * @property {function} [comingDuration] - The travel time(coming duration) template function
+ * @property {function} [monthMoreTitleDate] - The month more layer title template function
+ * @property {function} [monthMoreClose] - The month more layer close button template function
+ * @property {function} [monthGridHeader] - The month grid header(date, decorator, title) template function
+ * @property {function} [monthGridHeaderExceed] - The month grid header(exceed schedule count) template function
+ * @property {function} [monthGridFooter] - The month grid footer(date, decorator, title) template function
+ * @property {function} [monthGridFooterExceed] - The month grid footer(exceed schedule count) template function
+ * @property {function} [monthDayname] - The monthly dayname template function
+ * @property {function} [weekDayname] - The weekly dayname template function
+ * @property {function} [weekGridFooterExceed] - The week/day grid footer(exceed schedule count) template function
+ * @property {function} [dayGridTitle] - The week/day grid title template function(e.g. milestone, task, allday)
+ * @property {function} [schedule] - The week/day schedule template function(When the schedule category attribute is milestone, task, or all day)
+ * @property {function} [collapseBtnTitle] - The week/day (exceed schedule more view) collapse button title template function
+ * @property {function} [timezoneDisplayLabel] - The timezone display label template function in time grid
+ * @property {function} [timegridDisplayPrimaryTime] - The display label template function of primary timezone in time grid
+ * @property {function} [timegridDisplayTime] - The display time template function in time grid
+ * @property {function} [timegridCurrentTime] - The current time template function in time grid
+ * @property {function} [popupIsAllDay] - The all day checkbox label text template function in the default creation popup
+ * @property {function} [popupStateFree] - The free option template function in the state select box of the default creation popup
+ * @property {function} [popupStateBusy] - The busy option template function in the state select box of the default creation popup
+ * @property {function} [titlePlaceholder] - The title input placeholder text template function in the default creation popup
+ * @property {function} [locationPlaceholder] - The location input placeholder text template function in the default creation popup
+ * @property {function} [startDatePlaceholder] - The start date input placeholder text template function in the default creation popup
+ * @property {function} [endDatePlaceholder] - The end date input placeholder text template function in the default creation popup
+ * @property {function} [popupSave] - The 'Save' button text template function in the default creation popup
+ * @property {function} [popupUpdate] - The 'Update' button text template function in the default creation popup when in edit mode
+ * @property {function} [popupDetailDate] - The schedule date information's template function on the default detail popup
+ * @property {function} [popupDetailLocation] - The schedule location text information's template function on the default detail popup
+ * @property {function} [popupDetailUser] - The schedule user text information's template function on the default detail popup
+ * @property {function} [popupDetailState] - The schedule state(busy or free) text information's template function on the default detail popup
+ * @property {function} [popupDetailRepeat] - The schedule repeat information's template function on the default detail popup
+ * @property {function} [popupDetailBody] - The schedule body text information's template function on the default detail popup
+ * @property {function} [popupEdit] - The 'Edit' button text template function on the default detail popup
+ * @property {function} [popupDelete] - The 'Delete' button text template function on the default detail popup
+ * @example
+ * var calendar = new tui.Calendar(document.getElementById('calendar'), {
+ *     ...
+ *     template: {
+ *         milestone: function(schedule) {
+ *             return '<span class="calendar-font-icon ic-milestone-b"></span> <span style="background-color: ' + schedule.bgColor + '">' + schedule.title + '</span>';
+ *         },
+ *         milestoneTitle: function() {
+ *             return '<span class="tui-full-calendar-left-content">MILESTONE</span>';
+ *         },
+ *         task: function(schedule) {
+ *             return '#' + schedule.title;
+ *         },
+ *         taskTitle: function() {
+ *             return '<span class="tui-full-calendar-left-content">TASK</span>';
+ *         },
+ *         allday: function(schedule) {
+ *             return getTimeTemplate(schedule, true);
+ *         },
+ *         alldayTitle: function() {
+ *             return '<span class="tui-full-calendar-left-content">ALL DAY</span>';
+ *         },
+ *         time: function(schedule) {
+ *             return '<strong>' + moment(schedule.start.getTime()).format('HH:mm') + '</strong> ' + schedule.title;
+ *         },
+ *         goingDuration: function(schedule) {
+ *             return '<span class="calendar-icon ic-travel-time"></span>' + schedule.goingDuration + 'min.';
+ *         },
+ *         comingDuration: function(schedule) {
+ *             return '<span class="calendar-icon ic-travel-time"></span>' + schedule.comingDuration + 'min.';
+ *         },
+ *         monthMoreTitleDate: function(date, dayname) {
+ *             var day = date.split('.')[2];
+ *
+ *             return '<span class="tui-full-calendar-month-more-title-day">' + day + '</span> <span class="tui-full-calendar-month-more-title-day-label">' + dayname + '</span>';
+ *         },
+ *         monthMoreClose: function() {
+ *             return '<span class="tui-full-calendar-icon tui-full-calendar-ic-close"></span>';
+ *         },
+ *         monthGridHeader: function(dayModel) {
+ *             var date = parseInt(dayModel.date.split('-')[2], 10);
+ *             var classNames = ['tui-full-calendar-weekday-grid-date '];
+ *
+ *             if (dayModel.isToday) {
+ *                 classNames.push('tui-full-calendar-weekday-grid-date-decorator');
+ *             }
+ *
+ *             return '<span class="' + classNames.join(' ') + '">' + date + '</span>';
+ *         },
+ *         monthGridHeaderExceed: function(hiddenSchedules) {
+ *             return '<span class="weekday-grid-more-schedules">+' + hiddenSchedules + '</span>';
+ *         },
+ *         monthGridFooter: function() {
+ *             return '';
+ *         },
+ *         monthGridFooterExceed: function(hiddenSchedules) {
+ *             return '';
+ *         },
+ *         monthDayname: function(model) {
+ *             return (model.label).toString().toLocaleUpperCase();
+ *         },
+ *         weekDayname: function(model) {
+ *             return '<span class="tui-full-calendar-dayname-date">' + model.date + '</span>&nbsp;&nbsp;<span class="tui-full-calendar-dayname-name">' + model.dayName + '</span>';
+ *         },
+ *         weekGridFooterExceed: function(hiddenSchedules) {
+ *             return '+' + hiddenSchedules;
+ *         },
+ *         dayGridTitle: function(viewName) {
+ *
+ *             // use another functions instead of 'dayGridTitle'
+ *             // milestoneTitle: function() {...}
+ *             // taskTitle: function() {...}
+ *             // alldayTitle: function() {...}
+ *
+ *             var title = '';
+ *             switch(viewName) {
+ *                 case 'milestone':
+ *                     title = '<span class="tui-full-calendar-left-content">MILESTONE</span>';
+ *                     break;
+ *                 case 'task':
+ *                     title = '<span class="tui-full-calendar-left-content">TASK</span>';
+ *                     break;
+ *                 case 'allday':
+ *                     title = '<span class="tui-full-calendar-left-content">ALL DAY</span>';
+ *                     break;
+ *             }
+ *
+ *             return title;
+ *         },
+ *         schedule: function(schedule) {
+ *
+ *             // use another functions instead of 'schedule'
+ *             // milestone: function() {...}
+ *             // task: function() {...}
+ *             // allday: function() {...}
+ *
+ *             var tpl;
+ *
+ *             switch(category) {
+ *                 case 'milestone':
+ *                     tpl = '<span class="calendar-font-icon ic-milestone-b"></span> <span style="background-color: ' + schedule.bgColor + '">' + schedule.title + '</span>';
+ *                     break;
+ *                 case 'task':
+ *                     tpl = '#' + schedule.title;
+ *                     break;
+ *                 case 'allday':
+ *                     tpl = getTimeTemplate(schedule, true);
+ *                     break;
+ *             }
+ *
+ *             return tpl;
+ *         },
+ *         collapseBtnTitle: function() { // ??? 어떤 템플릿인가요??
+ *             return '<span class="tui-full-calendar-icon tui-full-calendar-ic-arrow-solid-top"></span>';
+ *         },
+ *         timezoneDisplayLabel: function(timezoneOffset, displayLabel) {
+ *             var gmt, hour, minutes;
+ *
+ *             if (!displayLabel) {
+ *                 gmt = timezoneOffset < 0 ? '-' : '+';
+ *                 hour = Math.abs(parseInt(timezoneOffset / 60, 10));
+ *                 minutes = Math.abs(timezoneOffset % 60);
+ *                 displayLabel = gmt + getPadStart(hour) + ':' + getPadStart(minutes);
+ *             }
+ *
+ *             return displayLabel;
+ *         },
+ *         timegridDisplayPrimaryTime: function(time) {
+ *             var meridiem = 'am';
+ *             var hour = time.hour;
+ *
+ *             if (time.hour > 12) {
+ *                 meridiem = 'pm';
+ *                 hour = time.hour - 12;
+ *             }
+ *
+ *             return hour + ' ' + meridiem;
+ *         },
+ *         timegridDisplayTime: function(time) {
+ *             return getPadStart(time.hour) + ':' + getPadStart(time.hour);
+ *         },
+ *         timegridCurrentTime: function(timezone) {
+ *             var templates = [];
+ *
+ *             if (timezone.dateDifference) {
+ *                 templates.push('[' + timezone.dateDifferenceSign + timezone.dateDifference + ']<br>');
+ *             }
+ *
+ *             templates.push(moment(timezone.hourmarker).format('HH:mm a'));
+ *
+ *             return templates.join('');
+ *         },
+ *         popupIsAllDay: function() {
+ *             return 'All Day';
+ *         },
+ *         popupStateFree: function() {
+ *             return 'Free';
+ *         },
+ *         popupStateBusy: function() {
+ *             return 'Busy';
+ *         },
+ *         titlePlaceholder: function() {
+ *             return 'Subject';
+ *         },
+ *         locationPlaceholder: function() {
+ *             return 'Location';
+ *         },
+ *         startDatePlaceholder: function() {
+ *             return 'Start date';
+ *         },
+ *         endDatePlaceholder: function() {
+ *             return 'End date';
+ *         },
+ *         popupSave: function() {
+ *             return 'Save';
+ *         },
+ *         popupUpdate: function() {
+ *             return 'Update';
+ *         },
+ *         popupDetailDate: function(isAllDay, start, end) {
+ *             var isSameDate = moment(start).isSame(end);
+ *             var endFormat = (isSameDate ? '' : 'YYYY.MM.DD ') + 'hh:mm a';
+ *
+ *             if (isAllDay) {
+ *                 return moment(start).format('YYYY.MM.DD') + (isSameDate ? '' : ' - ' + moment(end).format('YYYY.MM.DD'));
+ *             }
+ *
+ *             return (moment(start).format('YYYY.MM.DD hh:mm a') + ' - ' + moment(end).format(endFormat));
+ *         },
+ *         popupDetailLocation: function(schedule) {
+ *             return 'Location : ' + schedule.location;
+ *         },
+ *         popupDetailUser: function(schedule) {
+ *             return 'User : ' + (schedule.attendees || []).join(', ');
+ *         },
+ *         popupDetailState: function(schedule) {
+ *             return 'State : ' + schedule.state || 'Busy';
+ *         },
+ *         popupDetailRepeat: function(schedule) {
+ *             return 'Repeat : ' + schedule.recurrenceRule;
+ *         },
+ *         popupDetailBody: function(schedule) {
+ *             return 'Body : ' + schedule.body;
+ *         },
+ *         popupEdit: function() {
+ *             return 'Edit';
+ *         },
+ *         popupDelete: function() {
+ *             return 'Delete';
+ *         }
+ *     }
+ * }
  */
 
 /**
  * Options for daily, weekly view.
  * @typedef {object} WeekOptions
- * @property {number} [startDayOfWeek=0] - start day of week
- * @property {Array.<string>} [daynames] - day names in weekly and daily.
- *                    Default values are ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
- * @property {boolean} [narrowWeekend=false] - make weekend column narrow(1/2 width)
- * @property {boolean} [workweek=false] - show only 5 days except for weekend
- * @property {boolean} [showTimezoneCollapseButton=false] - show a collapse button to close multiple timezones
+ * @property {number} [startDayOfWeek=0] - The start day of week,
+ * @property {Array.<string>} [daynames] - The day names in weekly and daily. Default values are ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+ * @property {boolean} [narrowWeekend=false] - Make weekend column narrow(1/2 width)
+ * @property {boolean} [workweek=false] - Show only 5 days except for weekend
+ * @property {boolean} [showTimezoneCollapseButton=false] - Show a collapse button to close multiple timezones
  * @property {boolean} [timezonesCollapsed=false] - An initial multiple timezones collapsed state
+ * @property {number} [hourStart=0] - Can limit of render hour start.
+ * @property {number} [hourEnd=24] - Can limit of render hour end.
  */
 
 /**
  * Options for monthly view.
  * @typedef {object} MonthOptions
- * @property {Array.<string>} [daynames] - day names in monthly.
- * Default values are ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
- * @property {number} [startDayOfWeek=0] - start day of week
- * @property {boolean} [narrowWeekend=false] - make weekend column narrow(1/2 width)
- * @property {boolean} [visibleWeeksCount=6] - visible week count in monthly(0 or null are same with 6)
+ * @property {Array.<string>} [daynames] - The day names in monthly. Default values are ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+ * @property {number} [startDayOfWeek=0] - The start day of week
+ * @property {boolean} [narrowWeekend=false] - Make weekend column narrow(1/2 width)
+ * @property {boolean} [visibleWeeksCount=6] - The visible week count in monthly(0 or null are same with 6)
  * @property {boolean} [isAlways6Week=true] - Always show 6 weeks. If false, show 5 weeks or 6 weeks based on the month.
- * @property {boolean} [workweek=false] - show only 5 days except for weekend
- * @property {number} [visibleScheduleCount] - visible schedule count in monthly grid
- * @property {object} [moreLayerSize] - more layer size
- * @property {object} [moreLayerSize.width=null] - css width value(px, 'auto').
- *                                                       The default value 'null' is to fit a grid cell.
- * @property {object} [moreLayerSize.height=null] - css height value(px, 'auto').
- *                                                        The default value 'null' is to fit a grid cell.
- * @property {object} [grid] - grid's header and footer information
- *  @property {object} [grid.header] - grid's header informatioin
- *   @property {number} [grid.header.height=34] - grid's header height
- *  @property {object} [grid.footer] - grid's footer informatioin
- *   @property {number} [grid.footer.height=34] - grid's footer height
- * @property {function} [scheduleFilter=null] - Filter schedules on month view. A parameter is {Schedule} object.
+ * @property {boolean} [workweek=false] - Show only 5 days except for weekend
+ * @property {number} [visibleScheduleCount] - The visible schedule count in monthly grid
+ * @property {object} [moreLayerSize] - The more layer size
+ * @property {object} [moreLayerSize.width=null] - The css width value(px, 'auto').
+*                                                  The default value 'null' is to fit a grid cell.
+ * @property {object} [moreLayerSize.height=null] - The css height value(px, 'auto').
+*                                                   The default value 'null' is to fit a grid cell.
+ * @property {object} [grid] - The grid's header and footer information
+ *  @property {object} [grid.header] - The grid's header informatioin
+ *   @property {number} [grid.header.height=34] - The grid's header height
+ *  @property {object} [grid.footer] - The grid's footer informatioin
+ *   @property {number} [grid.footer.height=34] - The grid's footer height
+ * @property {function} [scheduleFilter=null] - The filter schedules on month view. A parameter is {Schedule} object.
  */
 
 /**
  * @typedef {object} CalendarColor
- * @property {string} [CalendarColor.color] - calendar color
- * @property {string} [CalendarColor.bgColor] - calendar background color
- * @property {string} [CalendarColor.borderColor] - calendar left border color
+ * @property {string} [color] - The calendar color
+ * @property {string} [bgColor] - The calendar background color
+ * @property {string} [borderColor] - The calendar left border color
  */
 
 /**
  * @typedef {object} Timezone
- * @property {number} [timezoneOffset] - minutes for your timezone offset. If null, use the browser's timezone. Refer to Date.prototype.getTimezoneOffset()
- * @property {string} [displayLabel] -  display label of your timezone at weekly/daily view(ex> 'GMT+09:00')
- * @property {string} [tooltip] -  tooltip(ex> 'Seoul')
+ * @property {number} [timezoneOffset] - The minutes for your timezone offset. If null, use the browser's timezone. Refer to Date.prototype.getTimezoneOffset()
+ * @property {string} [displayLabel] -  The display label of your timezone at weekly/daily view(e.g. 'GMT+09:00')
+ * @property {string} [tooltip] -  The tooltip(e.g. 'Seoul')
  * @example
- * var timezoneName = moment.tz.guess();
  * var cal = new Calendar('#calendar', {
  *  timezones: [{
  *      timezoneOffset: 540,
@@ -7995,42 +8295,74 @@ var mmin = Math.min;
  */
 
 /**
- * @typedef {object} Options - calendar option object
- * @property {string} [defaultView='week'] - default view of calendar
- * @property {boolean|Array.<string>} [taskView=true] - show the milestone and task in weekly, daily view. If the value is array, it can be <b>['milestone', 'task']</b>.
- * @property {boolean|Array.<string>} [scheduleView=true] - show the all day and time grid in weekly, daily view.  If the value is array, it can be <b>['allday', 'time']</b>.
- * @property {themeConfig} [theme=themeConfig] - custom theme options
- * @property {Template} [template={}] - template options
- * @property {WeekOptions} [week={}] - options for week view
- * @property {MonthOptions} [month={}] - options for month view
- * @property {Array.<Calendar>} [calendars=[]] - list of Calendars that can be used to add new schedule
- * @property {boolean} [useCreationPopup=false] - whether use default creation popup or not
- * @property {boolean} [useDetailPopup=false] - whether use default detail popup or not
- * @property {Array.<Timezone>} [timezones] - timezone array. 
- *  The first Timezone element is primary and can override Calendar#setTimezoneOffset function.
- *  The rest timezone elements are shown in left timegrid of weekly/daily view.
- * @property {boolean} [disableDblClick=false] - disable double click to create a schedule
- * @property {boolean} [isReadOnly=false] - Calendar is read-only mode and a user can't create and modify any schedule.
+ * @typedef {object} CalendarProps
+ * @property {string|number} id - The calendar id
+ * @property {string} name - The calendar name
+ * @property {string} color - The text color when schedule is displayed
+ * @property {string} bgColor - The background color schedule is displayed
+ * @property {string} borderColor - The color of left border or bullet point when schedule is displayed
+ * @example
+ * var cal = new Calendar('#calendar', {
+ *   ...
+ *   calendars: [
+ *     {
+ *       id: '1',
+ *       name: 'My Calendar',
+ *       color: '#ffffff',
+ *       bgColor: '#9e5fff',
+ *       dragBgColor: '#9e5fff',
+ *       borderColor: '#9e5fff'
+ *     },
+ *     {
+ *       id: '2',
+ *       name: 'Company',
+ *       color: '#00a9ff',
+ *       bgColor: '#00a9ff',
+ *       dragBgColor: '#00a9ff',
+ *       borderColor: '#00a9ff'
+ *     },
+ *   ]
+ * });
  */
 
 /**
- * @typedef {class} CustomEvents
+ * @typedef {object} Options - Calendar option object
+ * @property {string} [defaultView='week'] - Default view of calendar. The default value is 'week'.
+ * @property {boolean|Array.<string>} [taskView=true] - Show the milestone and task in weekly, daily view. The default value is true. If the value is array, it can be &#91;'milestone', 'task'&#93;.
+ * @property {boolean|Array.<string>} [scheduleView=true] - Show the all day and time grid in weekly, daily view. The default value is false. If the value is array, it can be &#91;'allday', 'time'&#93;.
+ * @property {themeConfig} [theme=themeConfig] - {@link themeConfig} for custom style.
+ * @property {Template} [template={}] - {@link Template} for further informatio
+ * @property {WeekOptions} [week={}] - {@link WeekOptions} for week view
+ * @property {MonthOptions} [month={}] - {@link MonthOptions} for month view
+ * @property {Array.<CalendarProps>} [calendars=[]] - {@link CalendarProps} List that can be used to add new schedule. The default value is [].
+ * @property {boolean} [useCreationPopup=false] - Whether use default creation popup or not. The default value is false.
+ * @property {boolean} [useDetailPopup=false] - Whether use default detail popup or not. The default value is false.
+ * @property {Array.<Timezone>} [timezones] - {@link Timezone} array.
+ *  The first Timezone element is primary and can override Calendar#setTimezoneOffset function
+ *  The rest timezone elements are shown in left timegrid of weekly/daily view
+ * @property {boolean} [disableDblClick=false] - Disable double click to create a schedule. The default value is false.
+ * @property {boolean} [disableClick=false] - Disable click to create a schedule. The default value is false.
+ * @property {boolean} [isReadOnly=false] - {@link Calendar} is read-only mode and a user can't create and modify any schedule. The default value is false.
+ */
+
+/**
  * {@link https://nhnent.github.io/tui.code-snippet/latest/tui.util.CustomEvents.html CustomEvents} document at {@link https://github.com/nhnent/tui.code-snippet tui-code-snippet}
+ * @typedef {class} CustomEvents
  */
 
 /**
- * @typedef {object} TimeCreationGuide - time creation guide instance to present selected time period
- * @property {HTMLElement} guideElement - guide element
- * @property {Object.<string, HTMLElement>} guideElements - map by key. It can be used in monthly view
- * @property {function} clearGuideElement - hide the creation guide
+ * @typedef {object} TimeCreationGuide - Time creation guide instance to present selected time period
+ * @property {HTMLElement} guideElement - Guide element
+ * @property {Object.<string, HTMLElement>} guideElements - Map by key. It can be used in monthly view
+ * @property {function} clearGuideElement - Hide the creation guide
  * @example
  * calendar.on('beforeCreateSchedule', function(event) {
  *     var guide = event.guide;
- *     // use guideEl$'s left, top to locate your schedule creation popup
+ *     // Use guideEl$'s left, top to locate your schedule creation popup
  *     var guideEl$ = guide.guideElement ?
  *          guide.guideElement : guide.guideElements[Object.keys(guide.guideElements)[0]];
  *
- *     // after that call this to hide the creation guide
+ *     // After that call this to hide the creation guide
  *     guide.clearGuideElement();
  * });
  */
@@ -8039,13 +8371,13 @@ var mmin = Math.min;
  * Calendar class
  * @constructor
  * @mixes CustomEvents
- * @param {HTMLElement|string} container - container element or selector id
- * @param {Options} options - calendar options
+ * @param {HTMLElement|string} container - The container element or selector id
+ * @param {Options} options - The calendar {@link Options} object
  * @example
  * var calendar = new tui.Calendar(document.getElementById('calendar'), {
  *     defaultView: 'week',
- *     taskView: true,    // can be also ['milestone', 'task']
- *     scheduleView: true,  // can be also ['allday', 'time']
+ *     taskView: true,    // Can be also ['milestone', 'task']
+ *     scheduleView: true,  // Can be also ['allday', 'time']
  *     template: {
  *         milestone: function(schedule) {
  *             return '<span style="color:red;"><i class="fa fa-flag"></i> ' + schedule.title + '</span>';
@@ -8243,6 +8575,7 @@ Calendar.prototype._initialize = function(options) {
             tooltip: ''
         }],
         disableDblClick: false,
+        disableClick: false,
         isReadOnly: false
     }, options);
 
@@ -8290,7 +8623,7 @@ Calendar.prototype._initialize = function(options) {
 
 /**
  * Create schedules and render calendar.
- * @param {Array.<Schedule>} schedules - schedule data list
+ * @param {Array.<Schedule>} schedules - {@link Schedule} data list
  * @param {boolean} [silent=false] - no auto render after creation when set true
  * @example
  * calendar.createSchedules([
@@ -8335,7 +8668,7 @@ Calendar.prototype.createSchedules = function(schedules, silent) {
 };
 
 /**
- * Get a schedule object by schedule id and calendar id.
+ * Get a {@link Schedule} object by schedule id and calendar id.
  * @param {string} scheduleId - ID of schedule
  * @param {string} calendarId - calendarId of the schedule
  * @returns {Schedule} schedule object
@@ -8352,9 +8685,9 @@ Calendar.prototype.getSchedule = function(scheduleId, calendarId) {
 /**
  * Update the schedule
  * @param {string} scheduleId - ID of a schedule to update
- * @param {string} calendarId - calendarId of the schedule to update
- * @param {Schedule} scheduleData - schedule data to update
- * @param {boolean} [silent=false] - no auto render after creation when set true
+ * @param {string} calendarId - The calendarId of the schedule to update
+ * @param {Schedule} scheduleData - The {@link Schedule} data to update
+ * @param {boolean} [silent=false] - No auto render after creation when set true
  * @example
  * calendar.on('beforeUpdateSchedule', function(event) {
  *     var schedule = event.schedule;
@@ -8385,8 +8718,8 @@ Calendar.prototype.updateSchedule = function(scheduleId, calendarId, scheduleDat
 /**
  * Delete a schedule.
  * @param {string} scheduleId - ID of schedule to delete
- * @param {string} calendarId - calendarId of the schedule to delete
- * @param {boolean} [silent=false] - no auto render after creation when set true
+ * @param {string} calendarId - The CalendarId of the schedule to delete
+ * @param {boolean} [silent=false] - No auto render after creation when set true
  */
 Calendar.prototype.deleteSchedule = function(scheduleId, calendarId, silent) {
     var ctrl = this._controller,
@@ -8410,9 +8743,9 @@ Calendar.prototype.deleteSchedule = function(scheduleId, calendarId, silent) {
  **********/
 
 /**
- * @param {string|Date} date - date to show in calendar
- * @param {number} [startDayOfWeek=0] - start day of week
- * @param {boolean} [workweek=false] - only show work week
+ * @param {string|Date} date - The Date to show in calendar
+ * @param {number} [startDayOfWeek=0] - The Start day of week
+ * @param {boolean} [workweek=false] - The only show work week
  * @returns {array} render range
  * @private
  */
@@ -8458,8 +8791,8 @@ Calendar.prototype._getWeekDayRange = function(date, startDayOfWeek, workweek) {
 
 /**
  * Toggle schedules' visibility by calendar ID
- * @param {string} calendarId - calendar id value
- * @param {boolean} toHide - set true to hide schedules
+ * @param {string} calendarId - The calendar id value
+ * @param {boolean} toHide - Set true to hide schedules
  * @param {boolean} [render=true] - set true then render after change visible property each models
  */
 Calendar.prototype.toggleSchedules = function(calendarId, toHide, render) {
@@ -8577,7 +8910,7 @@ Calendar.prototype.today = function() {
 
 /**
  * Move the calendar amount of offset value
- * @param {number} offset - offset value.
+ * @param {number} offset - The offset value.
  * @private
  * @example
  * // move previous week when "week" view.
@@ -8671,7 +9004,7 @@ Calendar.prototype.move = function(offset) {
 
 /**
  * Move to specific date
- * @param {(Date|string)} date - date to move
+ * @param {(Date|string)} date - The date to move
  * @example
  * calendar.on('clickDayname', function(event) {
  *     if (calendar.getViewName() === 'week') {
@@ -8740,9 +9073,9 @@ Calendar.prototype._getCurrentView = function() {
 
 /**
  * Change calendar's schedule color with option
- * @param {string} calendarId - calendar ID
- * @param {CalendarColor} option - color data object
- * @param {boolean} [silent=false] - no auto render after creation when set true
+ * @param {string} calendarId - The calendar ID
+ * @param {CalendarColor} option - The {@link CalendarColor} object
+ * @param {boolean} [silent=false] - No auto render after creation when set true
  * @example
  * calendar.setCalendarColor('1', {
  *     color: '#e8e8e8',
@@ -8805,7 +9138,7 @@ Calendar.prototype._onClick = function(clickScheduleData) {
      * Fire this event when click a schedule.
      * @event Calendar#clickSchedule
      * @type {object}
-     * @property {Schedule} schedule - schedule instance
+     * @property {Schedule} schedule - The {@link Schedule} instance
      * @property {MouseEvent} event - MouseEvent
      * @example
      * calendar.on('clickSchedule', function(event) {
@@ -8828,6 +9161,27 @@ Calendar.prototype._onClick = function(clickScheduleData) {
 };
 
 /**
+ * A bridge-based event handler for connecting a click handler to a user click event handler for each view
+ * @fires Calendar#clickMore
+ * @param {object} clickMoreSchedule - The event data of 'clickMore' handler
+ * @private
+ */
+Calendar.prototype._onClickMore = function(clickMoreSchedule) {
+    /**
+     * Fire this event when click a schedule.
+     * @event Calendar#clickMore
+     * @type {object}
+     * @property {Date} date - The Clicked date
+     * @property {HTMLElement} target - The more element
+     * @example
+     * calendar.on('clickMore', function(event) {
+     *     console.log('clickMore', event.date, event.target);
+     * });
+     */
+    this.fire('clickMore', clickMoreSchedule);
+};
+
+/**
  * dayname click event handler
  * @fires Calendar#clickDayname
  * @param {object} clickScheduleData - The event data of 'clickDayname' handler
@@ -8838,7 +9192,7 @@ Calendar.prototype._onClickDayname = function(clickScheduleData) {
      * Fire this event when click a day name in weekly.
      * @event Calendar#clickDayname
      * @type {object}
-     * @property {string} date - date string by format 'YYYY-MM-DD'
+     * @property {string} date - The date string by format 'YYYY-MM-DD'
      * @example
      * calendar.on('clickDayname', function(event) {
      *     if (calendar.getViewName() === 'week') {
@@ -8867,11 +9221,11 @@ Calendar.prototype._onBeforeCreate = function(createScheduleData) {
      * Fire this event when select time period in daily, weekly, monthly.
      * @event Calendar#beforeCreateSchedule
      * @type {object}
-     * @property {boolean} isAllDay - allday schedule
-     * @property {Date} start - selected start time
-     * @property {Date} end - selected end time
-     * @property {TimeCreationGuide} guide - TimeCreationGuide instance
-     * @property {string} triggerEventName - event name like 'click', 'dblclick'
+     * @property {boolean} isAllDay - The allday schedule
+     * @property {Date} start - The selected start time
+     * @property {Date} end - The selected end time
+     * @property {TimeCreationGuide} guide - {@link TimeCreationGuide} instance
+     * @property {string} triggerEventName - The event name like 'click', 'dblclick'
      * @example
      * calendar.on('beforeCreateSchedule', function(event) {
      *     var startTime = event.start;
@@ -8897,7 +9251,7 @@ Calendar.prototype._onBeforeCreate = function(createScheduleData) {
 
 /**
  * @fires Calendar#beforeUpdateSchedule
- * @param {object} updateScheduleData - update schedule data
+ * @param {object} updateScheduleData - update {@link Schedule} data
  * @private
  */
 Calendar.prototype._onBeforeUpdate = function(updateScheduleData) {
@@ -8905,9 +9259,9 @@ Calendar.prototype._onBeforeUpdate = function(updateScheduleData) {
      * Fire this event when drag a schedule to change time in daily, weekly, monthly.
      * @event Calendar#beforeUpdateSchedule
      * @type {object}
-     * @property {Schedule} schedule - schedule instance to update
-     * @property {Date} start - start time to update
-     * @property {Date} end - end time to update
+     * @property {Schedule} schedule - The {@link Schedule} instance to update
+     * @property {Date} start - The start time to update
+     * @property {Date} end - The end time to update
      * @example
      * calendar.on('beforeUpdateSchedule', function(event) {
      *     var schedule = event.schedule;
@@ -8933,7 +9287,7 @@ Calendar.prototype._onBeforeDelete = function(deleteScheduleData) {
      * Fire this event when delete a schedule.
      * @event Calendar#beforeDeleteSchedule
      * @type {object}
-     * @property {Schedule} schedule - schedule instance to delete
+     * @property {Schedule} schedule - The {@link Schedule} instance to delete
      * @example
      * calendar.on('beforeDeleteSchedule', function(event) {
      *     var schedule = event.schedule;
@@ -8945,7 +9299,7 @@ Calendar.prototype._onBeforeDelete = function(deleteScheduleData) {
 
 /**
  * @fires Calendar#afterRenderSchedule
- * @param {Schedule} scheduleData - schedule data
+ * @param {Schedule} scheduleData - The schedule data
  * @private
  */
 Calendar.prototype._onAfterRenderSchedule = function(scheduleData) {
@@ -8953,7 +9307,7 @@ Calendar.prototype._onAfterRenderSchedule = function(scheduleData) {
      * Fire this event by every single schedule after rendering whole calendar.
      * @event Calendar#afterRenderSchedule
      * @type {object}
-     * @property {Schedule} schedule - a rendered schedule instance 
+     * @property {Schedule} schedule - A rendered {@link Schedule} instance
      * @example
      * calendar.on('afterRenderSchedule', function(event) {
      *     var schedule = event.schedule;
@@ -8975,7 +9329,7 @@ Calendar.prototype._onClickTimezonesCollapseBtn = function(timezonesCollapsed) {
      * Fire this event by clicking timezones collapse button
      * @event Calendar#clickTimezonesCollapseBtn
      * @type {object}
-     * @property {boolean} timezonesCollapsed - timezones collapes flag
+     * @property {boolean} timezonesCollapsed - The timezones collapes flag
      * @example
      * calendar.on('clickTimezonesCollapseBtn', function(timezonesCollapsed) {
      *     console.log(timezonesCollapsed);
@@ -9019,12 +9373,13 @@ Calendar.prototype._toggleViewSchedule = function(isAttach, view) {
     // bypass events from view
     view[method]('afterRenderSchedule', self._onAfterRenderSchedule, self);
     view[method]('clickTimezonesCollapseBtn', self._onClickTimezonesCollapseBtn, self);
+    view[method]('clickMore', self._onClickMore, self);
 };
 
 /**
  * Change current view with view name('day', 'week', 'month')
- * @param {string} newViewName - new view name to render
- * @param {boolean} force - force render despite of current view and new view are equal
+ * @param {string} newViewName - The New view name to render
+ * @param {boolean} force - Force render despite of current view and new view are equal
  * @example
  * // daily view
  * calendar.changeView('day', true);
@@ -9053,7 +9408,7 @@ Calendar.prototype._toggleViewSchedule = function(isAttach, view) {
  * calendar.setOptions({week: {startDayOfWeek: 1}}, true);
  * calendar.setOptions({month: {startDayOfWeek: 1}}, true);
  * calendar.changeView(calendar.getViewName(), true);
- * 
+ *
  * // work week
  * calendar.setOptions({week: {workweek: true}}, true);
  * calendar.setOptions({month: {workweek: true}}, true);
@@ -9207,7 +9562,7 @@ Calendar.prototype.setTheme = function(theme) {
 
 /**
  * Set options of calendar
- * @param {Options} options - options to set
+ * @param {Options} options - set {@link Options}
  * @param {boolean} [silent=false] - no auto render after creation when set true
  */
 Calendar.prototype.setOptions = function(options, silent) {
@@ -9227,7 +9582,7 @@ Calendar.prototype.setOptions = function(options, silent) {
 };
 
 /**
- * Get current options.
+ * Get current {@link Options}.
  * @returns {Options} options
  */
 Calendar.prototype.getOptions = function() {
@@ -9235,7 +9590,7 @@ Calendar.prototype.getOptions = function() {
 };
 
 /**
- * Current rendered date
+ * Current rendered date ({@link TZDate} for further information)
  * @returns {TZDate}
  */
 Calendar.prototype.getDate = function() {
@@ -9243,7 +9598,7 @@ Calendar.prototype.getDate = function() {
 };
 
 /**
- * Start time of rendered date range
+ * Start time of rendered date range ({@link TZDate} for further information)
  * @returns {TZDate}
  */
 Calendar.prototype.getDateRangeStart = function() {
@@ -9251,7 +9606,7 @@ Calendar.prototype.getDateRangeStart = function() {
 };
 
 /**
- * End time of rendered date range
+ * End time of rendered date range ({@link TZDate} for further information)
  * @returns {TZDate}
  */
 Calendar.prototype.getDateRangeEnd = function() {
@@ -9277,7 +9632,7 @@ Calendar.prototype.setCalendars = function(calendars) {
 
 /**
  * Open schedule creation popup
- * @param {Schedule} schedule - preset schedule data
+ * @param {Schedule} schedule - The preset {@link Schedule} data
  */
 Calendar.prototype.openCreationPopup = function(schedule) {
     if (this._openCreationPopup) {
@@ -9296,7 +9651,7 @@ Calendar.prototype.hideMoreView = function() {
 
 /**
  * Set timezone offset
- * @param {number} offset - offset (min)
+ * @param {number} offset - The offset (min)
  * @static
  * @deprecated
  * @example
@@ -9309,7 +9664,7 @@ Calendar.setTimezoneOffset = function(offset) {
 
 /**
  * Set a callback function to get timezone offset by timestamp
- * @param {function} callback - callback function
+ * @param {function} callback - The callback function
  * @static
  * @deprecated
  * @example
@@ -9564,6 +9919,11 @@ function createMonthView(baseController, layoutContainer, dragHandler, options) 
                      */
                     monthView.fire('afterRenderSchedule', {schedule: scheduleViewModel.model});
                 }
+            });
+
+            monthView.fire('clickMore', {
+                date: clickMoreSchedule.date,
+                target: moreView.getMoreViewElement()
             });
         }
     });
@@ -10480,10 +10840,20 @@ function DayGridCreation(dragHandler, view, controller, options) {
      */
     this._requestOnClick = false;
 
+    /**
+     * @type {boolean}
+     */
+    this._disableDblClick = options.disableDblClick;
+
+    /**
+     * @type {boolean}
+     */
+    this._disableClick = options.disableClick;
+
     dragHandler.on('dragStart', this._onDragStart, this);
     dragHandler.on('click', this._onClick, this);
 
-    if (options.disableDblClick) {
+    if (this._disableDblClick) {
         CLICK_DELAY = 0;
     } else {
         domevent.on(view.container, 'dblclick', this._onDblClick, this);
@@ -10688,7 +11058,7 @@ DayGridCreation.prototype._onClick = function(clickEventData) {
     var self = this;
     var getScheduleDataFunc, scheduleData;
 
-    if (!this.checkExpectedCondition(clickEventData.target)) {
+    if (!this.checkExpectedCondition(clickEventData.target) || this._disableClick) {
         return;
     }
 
@@ -12094,11 +12464,14 @@ Drag.prototype._onMouseDown = function(mouseDownEvent) {
 
     this._toggleDragEvent(true);
 
-    // EventTarget.target is not changed in mousemove event even if mouse is over the other element.
-    // It's different with other browsers(IE, Chrome, Safari)
-    if (util.browser.firefox) {
-        domevent.preventDefault(mouseDownEvent);
-    }
+    /**
+     * mousedown event for firefox bug. cancelable.
+     * @event Drag#mouseDown
+     * @type {object}
+     * @property {HTMLElement} target - target element in this event.
+     * @property {MouseEvent} originEvent - original mouse event object.
+     */
+    this.fire('mousedown', this._dragStartEventData);
 };
 
 /**
@@ -12358,7 +12731,7 @@ function getMousePosDate(monthView) {
             }
         }
 
-        return i;
+        return left < 0 ? -1 : i;
     }
 
     /**
@@ -12370,7 +12743,16 @@ function getMousePosDate(monthView) {
         var pos = domevent.getMousePosition(mouseEvent, relativeContainer),
             x = getX(common.ratio(size[0], 100, pos[0])),
             y = mfloor(common.ratio(size[1], weekCount, pos[1])),
-            weekdayView, date;
+            weekdayView,
+            date,
+            dateRange;
+
+        if (y < 0) {
+            y = 0;
+        }
+        if (y >= weeks.length) {
+            y = weeks.length - 1;
+        }
 
         weekdayView = util.pick(weeks, y);
 
@@ -12378,7 +12760,15 @@ function getMousePosDate(monthView) {
             return null;
         }
 
-        date = util.pick(weekdayView.getRenderDateRange(), x);
+        dateRange = weekdayView.getRenderDateRange();
+        if (x < 0) {
+            x = 0;
+        }
+        if (x >= dateRange.length) {
+            x = dateRange.length - 1;
+        }
+
+        date = util.pick(dateRange, x);
 
         if (!date) {
             return null;
@@ -12474,10 +12864,20 @@ function MonthCreation(dragHandler, monthView, baseController, options) {
      */
     this._requestOnClick = false;
 
+    /**
+     * @type {boolean}
+     */
+    this._disableDblClick = options.disableDblClick;
+
+    /**
+     * @type {boolean}
+     */
+    this._disableClick = options.disableClick;
+
     dragHandler.on('dragStart', this._onDragStart, this);
     dragHandler.on('click', this._onClick, this);
 
-    if (options.disableDblClick) {
+    if (this._disableDblClick) {
         CLICK_DELAY = 0;
     } else {
         domevent.on(monthView.container, 'dblclick', this._onDblClick, this);
@@ -12671,7 +13071,7 @@ MonthCreation.prototype._onClick = function(e) {
     var self = this;
     var eventData, range;
 
-    if (!isElementWeekdayGrid(e.target)) {
+    if (!isElementWeekdayGrid(e.target) || this._disableClick) {
         return;
     }
 
@@ -14154,8 +14554,9 @@ MonthResize.prototype._onDrag = function(dragEvent) {
  * @param {object} dragEndEvent - drag end event data
  */
 MonthResize.prototype._onDragEnd = function(dragEndEvent) {
-    var cache = this._cache,
-        scheduleData;
+    var cache = this._cache;
+    var scheduleData;
+    var start, end;
 
     this.dragHandler.off({
         drag: this._onDrag,
@@ -14169,8 +14570,13 @@ MonthResize.prototype._onDragEnd = function(dragEndEvent) {
     scheduleData = this.getScheduleData(dragEndEvent.originEvent);
 
     if (scheduleData) {
-        cache.end = new TZDate(Number(scheduleData.date));
-        this._updateSchedule(cache);
+        start = new TZDate(Number(cache.schedule.getStarts()));
+        end = new TZDate(Number(scheduleData.date));
+        cache.end = end;
+
+        if (start <= cache.end) {
+            this._updateSchedule(cache);
+        }
     }
 
     /**
@@ -14635,16 +15041,17 @@ var timeCore = {
         /**
          * @param {TZDate} startDate - start date
          * @param {TZDate} endDate - end date
+         * @param {number} hourStart Can limit of render hour start.
          * @returns {object} - common event data for time.*
          */
-        return util.bind(function(startDate, endDate) {
+        return util.bind(function(startDate, endDate, hourStart) {
             var gridY, timeY, nearestGridY, nearestGridTimeY, nearestGridEndY, nearestGridEndTimeY;
 
-            gridY = startDate.getHours() + getNearestHour(startDate.getMinutes());
+            gridY = startDate.getHours() - hourStart + getNearestHour(startDate.getMinutes());
             timeY = viewTime + datetime.millisecondsFrom('hour', gridY);
             nearestGridY = gridY;
             nearestGridTimeY = viewTime + datetime.millisecondsFrom('hour', nearestGridY);
-            nearestGridEndY = endDate.getHours() + getNearestHour(endDate.getMinutes());
+            nearestGridEndY = endDate.getHours() - hourStart + getNearestHour(endDate.getMinutes());
             nearestGridEndTimeY = viewTime + datetime.millisecondsFrom('hour', nearestGridEndY);
 
             return util.extend({
@@ -14656,7 +15063,8 @@ var timeCore = {
                 nearestGridTimeY: nearestGridTimeY,
                 nearestGridEndY: nearestGridEndY,
                 nearestGridEndTimeY: nearestGridEndTimeY,
-                triggerEvent: 'manual'
+                triggerEvent: 'manual',
+                hourStart: hourStart
             });
         }, this);
     },
@@ -14778,10 +15186,20 @@ function TimeCreation(dragHandler, timeGridView, baseController, options) {
      */
     this._requestOnClick = false;
 
+    /**
+     * @type {boolean}
+     */
+    this._disableDblClick = options.disableDblClick;
+
+    /**
+     * @type {boolean}
+     */
+    this._disableClick = options.disableClick;
+
     dragHandler.on('dragStart', this._onDragStart, this);
     dragHandler.on('click', this._onClick, this);
 
-    if (options.disableDblClick) {
+    if (this._disableDblClick) {
         CLICK_DELAY = 0;
     } else {
         domevent.on(timeGridView.container, 'dblclick', this._onDblClick, this);
@@ -15015,7 +15433,7 @@ TimeCreation.prototype._onClick = function(clickEventData) {
     }, this);
 
     condResult = this.checkExpectedCondition(clickEventData.target);
-    if (!condResult) {
+    if (!condResult || this._disableClick) {
         return;
     }
 
@@ -15065,6 +15483,7 @@ TimeCreation.prototype.invokeCreationClick = function(schedule) {
             datetime.parse(opt.renderStartDate),
             datetime.parse(opt.renderEndDate),
             datetime.MILLISECONDS_PER_DAY),
+        hourStart = opt.hourStart,
         targetDate = schedule.start;
     var getScheduleDataFunc, eventData, timeView;
 
@@ -15080,7 +15499,7 @@ TimeCreation.prototype.invokeCreationClick = function(schedule) {
     }
 
     getScheduleDataFunc = this._retriveScheduleDataFromDate(timeView);
-    eventData = getScheduleDataFunc(schedule.start, schedule.end);
+    eventData = getScheduleDataFunc(schedule.start, schedule.end, hourStart);
 
     this.fire('timeCreationClick', eventData);
 
@@ -15309,14 +15728,15 @@ TimeCreationGuide.prototype._getStyleDataFunc = function(viewHeight, hourLength,
  */
 TimeCreationGuide.prototype._createGuideElement = function(dragStartEventData) {
     var relatedView = dragStartEventData.relatedView,
+        hourStart = datetime.millisecondsFrom('hour', dragStartEventData.hourStart),
         unitData, styleFunc, styleData, result, top, height, start, end;
 
     unitData = this._styleUnit = this._getUnitData(relatedView);
     styleFunc = this._styleFunc = this._getStyleDataFunc.apply(this, unitData);
     styleData = this._styleStart = styleFunc(dragStartEventData);
 
-    start = styleData[1];
-    end = styleData[2] || (styleData[1] + MIN30);
+    start = styleData[1] + hourStart;
+    end = styleData[2] + hourStart || (start + MIN30);
     top = styleData[0];
     height = (unitData[4] * (end - start) / MIN60);
 
@@ -15412,6 +15832,7 @@ var util = __webpack_require__(/*! tui-code-snippet */ "tui-code-snippet");
 var config = __webpack_require__(/*! ../../config */ "./src/js/config.js");
 var datetime = __webpack_require__(/*! ../../common/datetime */ "./src/js/common/datetime.js");
 var domutil = __webpack_require__(/*! ../../common/domutil */ "./src/js/common/domutil.js");
+var domevent = __webpack_require__(/*! ../../common/domevent */ "./src/js/common/domevent.js");
 var TZDate = __webpack_require__(/*! ../../common/timezone */ "./src/js/common/timezone.js").Date;
 var timeCore = __webpack_require__(/*! ./core */ "./src/js/handler/time/core.js");
 var TimeMoveGuide = __webpack_require__(/*! ./moveGuide */ "./src/js/handler/time/moveGuide.js");
@@ -15457,6 +15878,7 @@ function TimeMove(dragHandler, timeGridView, baseController) {
     this._guide = new TimeMoveGuide(this);
 
     dragHandler.on('dragStart', this._onDragStart, this);
+    dragHandler.on('mousedown', this._onMouseDown, this);
 }
 
 /**
@@ -15502,6 +15924,26 @@ TimeMove.prototype._getTimeView = function(target) {
     }
 
     return util.pick(this.timeGridView.children.items, Number(matches[1]));
+};
+
+/**
+ * @emits TimeMove#mousedown
+ * @param {object} mouseDownEventData - Drag#mousedown schedule data.
+ */
+TimeMove.prototype._onMouseDown = function(mouseDownEventData) {
+    var target = mouseDownEventData.target,
+        timeView = this.checkExpectCondition(target),
+        blockElement = domutil.closest(target, config.classname('.time-date-schedule-block'));
+
+    if (!timeView || !blockElement) {
+        return;
+    }
+
+    // EventTarget.target is not changed in mousemove event even if mouse is over the other element.
+    // It's different with other browsers(IE, Chrome, Safari)
+    if (util.browser.firefox) {
+        domevent.preventDefault(mouseDownEventData.originEvent);
+    }
 };
 
 /**
@@ -15616,35 +16058,19 @@ TimeMove.prototype._updateSchedule = function(scheduleData) {
         schedule = ctrl.schedules.items[modelID],
         relatedView = scheduleData.relatedView,
         currentView = scheduleData.currentView,
-        scheduleDuration,
-        dateStart,
-        dateEnd,
         newStarts,
-        newEnds,
-        baseDate;
+        newEnds;
 
     if (!schedule || !currentView) {
         return;
     }
 
     timeDiff -= datetime.millisecondsFrom('minutes', 30);
-    baseDate = new TZDate(relatedView.getDate());
-    dateStart = datetime.start(baseDate);
-    dateEnd = datetime.end(baseDate);
     newStarts = new TZDate(schedule.getStarts().getTime() + timeDiff);
     newEnds = new TZDate(schedule.getEnds().getTime() + timeDiff);
-    scheduleDuration = schedule.duration();
 
     if (currentView) {
         dateDiff = currentView.getDate() - relatedView.getDate();
-    }
-
-    if (newStarts < dateStart) {
-        newStarts = new TZDate(dateStart.getTime());
-        newEnds = new TZDate(newStarts.getTime() + scheduleDuration.getTime());
-    } else if (newEnds > dateEnd) {
-        newEnds = new TZDate(dateEnd.getTime());
-        newStarts = new TZDate(newEnds.getTime() - scheduleDuration.getTime());
     }
 
     newStarts = new TZDate(newStarts.getTime() + dateDiff);
@@ -15791,6 +16217,10 @@ var FloatingLayer = __webpack_require__(/*! ../../common/floatingLayer */ "./src
 var tmpl = __webpack_require__(/*! ../../view/template/week/timeMoveGuide.hbs */ "./src/js/view/template/week/timeMoveGuide.hbs");
 var TZDate = __webpack_require__(/*! ../../common/timezone */ "./src/js/common/timezone.js").Date;
 var Schedule = __webpack_require__(/*! ../../model/schedule */ "./src/js/model/schedule.js");
+var datetime = __webpack_require__(/*! ../../common/datetime */ "./src/js/common/datetime.js");
+var common = __webpack_require__(/*! ../../common/common */ "./src/js/common/common.js");
+
+var SCHEDULE_MIN_DURATION = datetime.MILLISECONDS_SCHEDULE_MIN_DURATION;
 
 /**
  * Class for Time.Move effect.
@@ -15807,6 +16237,11 @@ function TimeMoveGuide(timeMove) {
      * @Type {Schedule}
      */
     this._model = null;
+
+    /**
+     * @type {object}
+     */
+    this._viewModel = null;
 
     /**
      * @type {object}
@@ -15861,7 +16296,7 @@ TimeMoveGuide.prototype.destroy = function() {
         this._guideLayer.destroy();
     }
     this.guideElement = this.timeMove = this._container = this._guideLayer = this._lastDrag =
-        this._getTopFunc = this._startGridY = this._startTopPixel = null;
+        this._getTopFunc = this._startGridY = this._startTopPixel = this._viewModel = null;
 };
 
 /**
@@ -15878,7 +16313,7 @@ TimeMoveGuide.prototype._clearGuideElement = function() {
     this._showOriginScheduleBlocks();
 
     this.guideElement = this._getTopFunc = this._guideLayer = this._model = this._lastDrag =
-        this._startGridY = this._startTopPixel = null;
+        this._startGridY = this._startTopPixel = this._viewModel = null;
 };
 
 /**
@@ -15906,8 +16341,9 @@ TimeMoveGuide.prototype._showOriginScheduleBlocks = function() {
  * Refresh guide element
  * @param {string} top - guide element's style top.
  * @param {Schedule} model - updated model
+ * @param {object} viewModel - view model
  */
-TimeMoveGuide.prototype._refreshGuideElement = function(top, model) {
+TimeMoveGuide.prototype._refreshGuideElement = function(top, model, viewModel) {
     var self = this;
 
     reqAnimFrame.requestAnimFrame(function() {
@@ -15915,7 +16351,7 @@ TimeMoveGuide.prototype._refreshGuideElement = function(top, model) {
             return;
         }
         self._guideLayer.setPosition(0, top);
-        self._guideLayer.setContent(tmpl({model: model}));
+        self._guideLayer.setContent(tmpl(util.extend({model: model}, viewModel)));
     });
 };
 
@@ -15928,6 +16364,7 @@ TimeMoveGuide.prototype._onDragStart = function(dragStartEventData) {
         dragStartEventData.target,
         config.classname('.time-date-schedule-block')
     );
+    var duration, modelDuration, goingDuration, comingDuration;
 
     if (!guideElement) {
         return;
@@ -15942,7 +16379,21 @@ TimeMoveGuide.prototype._onDragStart = function(dragStartEventData) {
         Schedule.create(dragStartEventData.model),
         dragStartEventData.model
     );
+
+    modelDuration = this._model.duration().getTime();
+    modelDuration = modelDuration > SCHEDULE_MIN_DURATION ? modelDuration : SCHEDULE_MIN_DURATION;
+    goingDuration = datetime.millisecondsFrom('minutes', this._model.goingDuration);
+    comingDuration = datetime.millisecondsFrom('minutes', this._model.comingDuration);
+    duration = goingDuration + modelDuration + comingDuration;
+
     this._lastDrag = dragStartEventData;
+    this._viewModel = {
+        hasGoingDuration: goingDuration > 0,
+        hasComingDuration: comingDuration > 0,
+        goingDurationHeight: common.ratio(duration, goingDuration, 100),
+        modelDurationHeight: common.ratio(duration, modelDuration, 100),
+        comingDurationHeight: common.ratio(duration, comingDuration, 100)
+    };
 
     this._resetGuideLayer();
     this._hideOriginScheduleBlocks();
@@ -15984,7 +16435,7 @@ TimeMoveGuide.prototype._onDrag = function(dragEventData) {
     this._model.end = new TZDate(this._model.getEnds().getTime() + timeDiff);
     this._lastDrag = dragEventData;
 
-    this._refreshGuideElement(top, this._model);
+    this._refreshGuideElement(top, this._model, this._viewModel);
 };
 
 TimeMoveGuide.prototype._resetGuideLayer = function() {
@@ -15995,7 +16446,7 @@ TimeMoveGuide.prototype._resetGuideLayer = function() {
     this._guideLayer = new FloatingLayer(null, this._container);
     this._guideLayer.setSize(this._container.getBoundingClientRect().width, this.guideElement.style.height);
     this._guideLayer.setPosition(0, this.guideElement.style.top);
-    this._guideLayer.setContent(tmpl({model: this._model}));
+    this._guideLayer.setContent(tmpl(util.extend({model: this._model}, this._viewModel)));
     this._guideLayer.show();
 };
 
@@ -16115,6 +16566,8 @@ TimeResize.prototype._onDragStart = function(dragStartEventData) {
     var target = dragStartEventData.target,
         timeView = this.checkExpectCondition(target),
         blockElement = domutil.closest(target, config.classname('.time-date-schedule-block')),
+        ctrl = this.baseController,
+        targetModelID,
         getScheduleDataFunc,
         scheduleData;
 
@@ -16122,10 +16575,12 @@ TimeResize.prototype._onDragStart = function(dragStartEventData) {
         return;
     }
 
+    targetModelID = domutil.getData(blockElement, 'id');
     getScheduleDataFunc = this._getScheduleDataFunc = this._retriveScheduleData(timeView);
     scheduleData = this._dragStart = getScheduleDataFunc(
         dragStartEventData.originEvent, {
-            targetModelID: domutil.getData(blockElement, 'id')
+            targetModelID: targetModelID,
+            schedule: ctrl.schedules.items[targetModelID]
         }
     );
 
@@ -16147,6 +16602,7 @@ TimeResize.prototype._onDragStart = function(dragStartEventData) {
      * @property {number} nearestGridY - nearest grid index related with mouseY value.
      * @property {number} nearestGridTimeY - time value for nearestGridY.
      * @property {string} targetModelID - The model unique id emitted move schedule.
+     * @property {Schedule} schedule - schedule data
      */
     this.fire('timeResizeDragstart', scheduleData);
 };
@@ -16339,6 +16795,7 @@ var config = __webpack_require__(/*! ../../config */ "./src/js/config.js");
 var domutil = __webpack_require__(/*! ../../common/domutil */ "./src/js/common/domutil.js");
 var reqAnimFrame = __webpack_require__(/*! ../../common/reqAnimFrame */ "./src/js/common/reqAnimFrame.js");
 var ratio = __webpack_require__(/*! ../../common/common */ "./src/js/common/common.js").ratio;
+var datetime = __webpack_require__(/*! ../../common/datetime */ "./src/js/common/datetime.js");
 
 /**
  * Class for Time.Resize effect.
@@ -16380,6 +16837,11 @@ function TimeResizeGuide(timeResize) {
      * @type {number}
      */
     this._startGridY = 0;
+
+    /**
+     * @type {Schedule}
+     */
+    this._schedule = null;
 
     timeResize.on({
         'timeResizeDragstart': this._onDragStart,
@@ -16423,18 +16885,28 @@ TimeResizeGuide.prototype._clearGuideElement = function() {
 
 /**
  * Refresh guide element
- * @param {string} height - guide element's style height.
+ * @param {number} guideHeight - guide element's style height.
+ * @param {number} minTimeHeight - time element's min height
+ * @param {number} timeHeight - time element's height.
  */
-TimeResizeGuide.prototype._refreshGuideElement = function(height) {
+TimeResizeGuide.prototype._refreshGuideElement = function(guideHeight, minTimeHeight, timeHeight) {
     var guideElement = this.guideElement;
+    var timeElement;
 
     if (!guideElement) {
         return;
     }
 
+    timeElement = domutil.find(config.classname('.time-schedule-content-time'), guideElement);
+
     reqAnimFrame.requestAnimFrame(function() {
-        guideElement.style.height = height + 'px';
+        guideElement.style.height = guideHeight + 'px';
         guideElement.style.display = 'block';
+
+        if (timeElement) {
+            timeElement.style.height = timeHeight + 'px';
+            timeElement.style.minHeight = minTimeHeight + 'px';
+        }
     });
 };
 
@@ -16447,13 +16919,14 @@ TimeResizeGuide.prototype._onDragStart = function(dragStartEventData) {
             dragStartEventData.target,
             config.classname('.time-date-schedule-block')
         ),
+        schedule = dragStartEventData.schedule,
         guideElement;
 
     if (!util.browser.msie) {
         domutil.addClass(global.document.body, config.classname('resizing'));
     }
 
-    if (!originElement) {
+    if (!originElement || !schedule) {
         return;
     }
 
@@ -16462,6 +16935,8 @@ TimeResizeGuide.prototype._onDragStart = function(dragStartEventData) {
     this._startTopPixel = parseFloat(originElement.style.top);
 
     this._originScheduleElement = originElement;
+    this._schedule = schedule;
+
     guideElement = this.guideElement = originElement.cloneNode(true);
     domutil.addClass(guideElement, config.classname('time-guide-resize'));
 
@@ -16482,6 +16957,12 @@ TimeResizeGuide.prototype._onDrag = function(dragEventData) {
         gridYOffset = dragEventData.nearestGridY - this._startGridY,
         // hourLength : viewHeight = gridYOffset : X;
         gridYOffsetPixel = ratio(hourLength, viewHeight, gridYOffset),
+        goingDuration = this._schedule.goingDuration,
+        modelDuration = this._schedule.duration().getTime() / datetime.MILLISECONDS_PER_MINUTES,
+        comingDuration = this._schedule.comingDuration,
+        minutesLength = hourLength * 60,
+        timeHeight,
+        timeMinHeight,
         minHeight,
         maxHeight,
         height;
@@ -16490,13 +16971,17 @@ TimeResizeGuide.prototype._onDrag = function(dragEventData) {
     // at least large than 30min from schedule start time.
     minHeight = guideTop + ratio(hourLength, viewHeight, 0.5);
     minHeight -= this._startTopPixel;
+    timeMinHeight = minHeight;
+    minHeight += ratio(minutesLength, viewHeight, goingDuration) + ratio(minutesLength, viewHeight, comingDuration);
     // smaller than 24h
     maxHeight = viewHeight - guideTop;
 
     height = Math.max(height, minHeight);
     height = Math.min(height, maxHeight);
 
-    this._refreshGuideElement(height);
+    timeHeight = ratio(minutesLength, viewHeight, modelDuration) + gridYOffsetPixel;
+
+    this._refreshGuideElement(height, timeMinHeight, timeHeight);
 };
 
 module.exports = TimeResizeGuide;
@@ -16526,6 +17011,8 @@ var TZDate = __webpack_require__(/*! ../common/timezone */ "./src/js/common/time
 var datetime = __webpack_require__(/*! ../common/datetime */ "./src/js/common/datetime.js");
 var dirty = __webpack_require__(/*! ../common/dirty */ "./src/js/common/dirty.js");
 var model = __webpack_require__(/*! ../common/model */ "./src/js/common/model.js");
+
+var SCHEDULE_MIN_DURATION = datetime.MILLISECONDS_SCHEDULE_MIN_DURATION;
 
 /**
  * Schedule category
@@ -16564,6 +17051,12 @@ function Schedule() {
      * @type {string}
      */
     this.title = '';
+
+    /**
+     * body for schedule.
+     * @type {string}
+     */
+    this.body = '';
 
     /**
      * is schedule is all day schedule?
@@ -16686,6 +17179,18 @@ function Schedule() {
     this.state = '';
 
     /**
+     * travelTime: going-Duration minutes
+     * @type {number}
+     */
+    this.goingDuration = 0;
+
+    /**
+     * travelTime: coming-Duration minutes
+     * @type {number}
+     */
+    this.comingDuration = 0;
+
+    /**
      * Separate data storage space independent of rendering.
      * @type {object}
      */
@@ -16732,6 +17237,7 @@ Schedule.prototype.init = function(options) {
 
     this.id = options.id || '';
     this.title = options.title || '';
+    this.body = options.body || '';
     this.isAllDay = util.isExisty(options.isAllDay) ? options.isAllDay : false;
     this.isVisible = util.isExisty(options.isVisible) ? options.isVisible : true;
 
@@ -16750,6 +17256,9 @@ Schedule.prototype.init = function(options) {
     this.isPending = options.isPending || false;
     this.isFocused = options.isFocused || false;
     this.isReadOnly = options.isReadOnly || false;
+    this.goingDuration = options.goingDuration || 0;
+    this.comingDuration = options.comingDuration || 0;
+    this.state = options.state || '';
 
     if (this.isAllDay) {
         this.setAllDayPeriod(options.start, options.end);
@@ -16824,6 +17333,10 @@ Schedule.prototype.equals = function(schedule) {
         return false;
     }
 
+    if (this.body !== schedule.body) {
+        return false;
+    }
+
     if (this.isAllDay !== schedule.isAllDay) {
         return false;
     }
@@ -16884,6 +17397,23 @@ Schedule.prototype.collidesWith = function(schedule) {
         ownEnds = this.getEnds(),
         start = schedule.getStarts(),
         end = schedule.getEnds();
+    var ownGoingDuration = datetime.millisecondsFrom('minutes', this.goingDuration),
+        ownComingDuration = datetime.millisecondsFrom('minutes', this.comingDuration),
+        goingDuration = datetime.millisecondsFrom('minutes', schedule.goingDuration),
+        comingDuration = datetime.millisecondsFrom('minutes', schedule.comingDuration);
+
+    if (Math.abs(ownEnds - ownStarts) < SCHEDULE_MIN_DURATION) {
+        ownEnds += SCHEDULE_MIN_DURATION;
+    }
+
+    if (Math.abs(end - start) < SCHEDULE_MIN_DURATION) {
+        end += SCHEDULE_MIN_DURATION;
+    }
+
+    ownStarts -= ownGoingDuration;
+    ownEnds += ownComingDuration;
+    start -= goingDuration;
+    end += comingDuration;
 
     if ((start > ownStarts && start < ownEnds) ||
         (end > ownStarts && end < ownEnds) ||
@@ -16919,7 +17449,7 @@ module.exports = Schedule;
 var util = __webpack_require__(/*! tui-code-snippet */ "tui-code-snippet");
 var datetime = __webpack_require__(/*! ../../common/datetime */ "./src/js/common/datetime.js");
 
-var MILLISECONDS_SCHEDULE_MIN_DURATION = datetime.MILLISECONDS_SCHEDULE_MIN_DURATION;
+var SCHEDULE_MIN_DURATION = datetime.MILLISECONDS_SCHEDULE_MIN_DURATION;
 
 /**
  * Schedule ViewModel
@@ -17089,14 +17619,27 @@ ScheduleViewModel.prototype.collidesWith = function(viewModel) {
         ownEnds = this.getEnds(),
         start = viewModel.getStarts(),
         end = viewModel.getEnds();
+    var ownGoingDuration = datetime.millisecondsFrom('minutes', this.valueOf().goingDuration),
+        ownComingDuration = datetime.millisecondsFrom('minutes', this.valueOf().comingDuration),
+        goingDuration = datetime.millisecondsFrom('minutes', viewModel.valueOf().goingDuration),
+        comingDuration = datetime.millisecondsFrom('minutes', viewModel.valueOf().comingDuration);
+
+    if (Math.abs(ownEnds - ownStarts) < SCHEDULE_MIN_DURATION) {
+        ownEnds += SCHEDULE_MIN_DURATION;
+    }
+
+    if (Math.abs(end - start) < SCHEDULE_MIN_DURATION) {
+        end += SCHEDULE_MIN_DURATION;
+    }
+
+    ownStarts -= ownGoingDuration;
+    ownEnds += ownComingDuration;
+    start -= goingDuration;
+    end += comingDuration;
 
     if ((start > ownStarts && start < ownEnds) ||
         (end > ownStarts && end < ownEnds) ||
         (start <= ownStarts && end >= ownEnds)) {
-        return true;
-    }
-
-    if (Math.abs(start - ownStarts) < MILLISECONDS_SCHEDULE_MIN_DURATION) {
         return true;
     }
 
@@ -17153,7 +17696,7 @@ var theme = {
     // month day grid cell 'day'
     'month.holidayExceptThisMonth.color': 'rgba(255, 64, 64, 0.4)',
     'month.dayExceptThisMonth.color': 'rgba(51, 51, 51, 0.4)',
-    'month.weekend.backgroundColor': 'none',
+    'month.weekend.backgroundColor': 'inherit',
     'month.day.fontSize': '14px',
 
     // month schedule style
@@ -17368,20 +17911,20 @@ module.exports = Theme;
 
 
 /**
- * @typedef {object} themeConfig
- * Full configuration for theme.<br>
- * "common" prefix is for entire calendar. "common" properties can be overriden by "week", "month".<br>
- * "week" prefix is for weekly and daily view.<br>
+ * Full configuration for theme.
+ * "common" prefix is for entire calendar. "common" properties can be overriden by "week", "month".
+ * "week" prefix is for weekly and daily view.
  * "month" prefix is for monthly view.
+ * @typedef {object} themeConfig
  * @example
  // default keys and styles
  var themeConfig = {
     'common.border': '1px solid #e5e5e5',
     'common.backgroundColor': 'white',
     'common.holiday.color': '#ff4040',
-    'common.saturday.color': '#135de6',
+    'common.saturday.color': '#333',
     'common.dayname.color': '#333',
-    'common.today.color': '#135de6',
+    'common.today.color': '#333',
 
     // creation guide style
     'common.creationGuide.backgroundColor': 'rgba(81, 92, 230, 0.05)',
@@ -17417,10 +17960,10 @@ module.exports = Theme;
     'month.moreView.paddingBottom': '17px',
     'month.moreViewTitle.height': '44px',
     'month.moreViewTitle.marginBottom': '12px',
-    'month.moreViewTitle.backgroundColor': 'white',
+    'month.moreViewTitle.backgroundColor': 'inherit',
     'month.moreViewTitle.borderBottom': 'none',
     'month.moreViewTitle.padding': '12px 17px 0 17px',
-    'month.moreViewList.padding': '0 17px 17px 17px',
+    'month.moreViewList.padding': '0 17px',
 
     // week header 'dayname'
     'week.dayname.height': '42px',
@@ -17431,6 +17974,7 @@ module.exports = Theme;
     'week.dayname.backgroundColor': 'inherit',
     'week.dayname.textAlign': 'left',
     'week.today.color': '#333',
+    'week.pastDay.color': '#bbb',
 
     // week vertical panel 'vpanel'
     'week.vpanelSplitter.border': '1px solid #e5e5e5',
@@ -17453,7 +17997,8 @@ module.exports = Theme;
     'week.timegridLeft.backgroundColor': 'inherit',
     'week.timegridLeft.borderRight': '1px solid #e5e5e5',
     'week.timegridLeft.fontSize': '11px',
-    'week.timegridLeftTimezoneLabel.height': '20px',
+    'week.timegridLeftTimezoneLabel.height': '40px',
+    'week.timegridLeftAdditionalTimezone.backgroundColor': 'white',
 
     'week.timegridOneHour.height': '52px',
     'week.timegridHalfHour.height': '26px',
@@ -17469,7 +18014,7 @@ module.exports = Theme;
     'week.currentTime.fontSize': '11px',
     'week.currentTime.fontWeight': 'normal',
 
-    'week.pastTime.color': '#333',
+    'week.pastTime.color': '#bbb',
     'week.pastTime.fontWeight': 'normal',
 
     'week.futureTime.color': '#333',
@@ -18299,6 +18844,14 @@ More.prototype.refresh = function() {
 };
 
 /**
+ * Return more layer root element
+ * @returns {HTMLElement} root element
+ */
+More.prototype.getMoreViewElement = function() {
+    return domutil.find(config.classname('.month-more'), this.layer.container);
+};
+
+/**
  * Get the styles from theme
  * @param {Theme} theme - theme instance
  * @returns {object} styles - styles object
@@ -18576,14 +19129,14 @@ function ScheduleCreationPopup(container, calendars) {
      */
     this._viewModel = null;
     this._selectedCal = null;
-    this._scheduleId = '';
+    this._schedule = null;
     this.calendars = calendars;
     this._focusedDropdown = null;
     this._onClickListeners = [
         this._selectDropdownMenuItem.bind(this),
+        this._toggleDropdownMenuView.bind(this),
         this._closeDropdownMenuView.bind(this, null),
         this._closePopup.bind(this),
-        this._toggleDropdownMenuView.bind(this),
         this._toggleIsAllday.bind(this),
         this._toggleIsPrivate.bind(this),
         this._onClickSaveSchedule.bind(this)
@@ -18664,7 +19217,7 @@ ScheduleCreationPopup.prototype._toggleDropdownMenuView = function(target) {
         return false;
     }
 
-    if (domutil.hasClass(config.classname('open'))) {
+    if (domutil.hasClass(dropdownBtn.parentNode, config.classname('open'))) {
         this._closeDropdownMenuView(dropdownBtn.parentNode);
     } else {
         this._openDropdownMenuView(dropdownBtn.parentNode);
@@ -18717,7 +19270,7 @@ ScheduleCreationPopup.prototype._selectDropdownMenuItem = function(target) {
     dropdownBtn = domutil.find(config.classname('.dropdown-button'), dropdown);
     domutil.find('.' + contentClassName, dropdownBtn).innerText = title;
 
-    if (domutil.hasClass(dropdown, config.classname('project_-calendar'))) {
+    if (domutil.hasClass(dropdown, config.classname('section-calendar'))) {
         domutil.find('.' + iconClassName, dropdownBtn).style.backgroundColor = bgColor;
         this._selectedCal = common.find(this.calendars, function(cal) {
             return cal.id === domutil.getData(selectedItem, 'calendarId');
@@ -18732,10 +19285,10 @@ ScheduleCreationPopup.prototype._selectDropdownMenuItem = function(target) {
 /**
  * Toggle allday checkbox state
  * @param {HTMLElement} target click event target
- * @returns {boolean} whether event target is allday project_ or not
+ * @returns {boolean} whether event target is allday section or not
  */
 ScheduleCreationPopup.prototype._toggleIsAllday = function(target) {
-    var className = config.classname('project_-allday');
+    var className = config.classname('section-allday');
     var alldaySection = domutil.hasClass(target, className) ? target : domutil.closest(target, '.' + className);
     var checkbox;
 
@@ -18752,10 +19305,10 @@ ScheduleCreationPopup.prototype._toggleIsAllday = function(target) {
 /**
  * Toggle private button
  * @param {HTMLElement} target click event target
- * @returns {boolean} whether event target is private project_ or not
+ * @returns {boolean} whether event target is private section or not
  */
 ScheduleCreationPopup.prototype._toggleIsPrivate = function(target) {
-    var className = config.classname('project_-private');
+    var className = config.classname('section-private');
     var privateSection = domutil.hasClass(target, className) ? target : domutil.closest(target, '.' + className);
 
     if (privateSection) {
@@ -18825,7 +19378,7 @@ ScheduleCreationPopup.prototype._onClickSaveSchedule = function(target) {
     if (this._isEditMode) {
         this.fire('beforeUpdateSchedule', {
             schedule: {
-                calendarId: calendarId,
+                calendarId: calendarId || this._schedule.calendarId,
                 title: title.value,
                 location: location.value,
                 raw: {
@@ -18836,7 +19389,7 @@ ScheduleCreationPopup.prototype._onClickSaveSchedule = function(target) {
                 isAllDay: isAllDay,
                 state: state.innerText,
                 triggerEventName: 'click',
-                id: this._scheduleId
+                id: this._schedule.id
             },
             start: start,
             end: end,
@@ -18928,7 +19481,7 @@ ScheduleCreationPopup.prototype._makeEditModeData = function(viewModel) {
         return cal.id === viewModel.schedule.calendarId;
     });
 
-    this._scheduleId = id;
+    this._schedule = schedule;
 
     return {
         id: id,
@@ -19317,10 +19870,13 @@ ScheduleDetailPopup.prototype._setPopupPositionAndArrowDirection = function(even
         top: parentRect.top
     };
     var scheduleEl = event.target || event.srcElement;
-    var scheduleBound = scheduleEl.getBoundingClientRect();
+    var blockEl = domutil.closest(scheduleEl, config.classname('.time-date-schedule-block'))
+        || domutil.closest(scheduleEl, config.classname('.weekday-schedule'))
+        || scheduleEl;
+    var scheduleBound = blockEl.getBoundingClientRect();
     var pos;
 
-    this._scheduleEl = scheduleEl;
+    this._scheduleEl = blockEl;
 
     pos = this._calcRenderingData(layerSize, windowSize, scheduleBound);
     pos.x -= parentBounds.left + 4;
@@ -19734,6 +20290,22 @@ Handlebars.registerHelper({
         return common.stripTags(model.title);
     },
 
+    'goingDuration-tmpl': function(model) {
+        var goingDuration = model.goingDuration;
+        var hour = parseInt(goingDuration / SIXTY_MINUTES, 10);
+        var minutes = goingDuration % SIXTY_MINUTES;
+
+        return 'GoingTime ' + datetime.leadingZero(hour, 2) + ':' + datetime.leadingZero(minutes, 2);
+    },
+
+    'comingDuration-tmpl': function(model) {
+        var goingDuration = model.goingDuration;
+        var hour = parseInt(goingDuration / SIXTY_MINUTES, 10);
+        var minutes = goingDuration % SIXTY_MINUTES;
+
+        return 'ComingTime ' + datetime.leadingZero(hour, 2) + ':' + datetime.leadingZero(minutes, 2);
+    },
+
     'monthMoreTitleDate-tmpl': function(date, dayname) {
         var classDay = config.classname('month-more-title-day');
         var classDayLabel = config.classname('month-more-title-day-label');
@@ -19773,15 +20345,15 @@ Handlebars.registerHelper({
         return '';
     },
 
+    'monthDayname-tmpl': function(model) {
+        return model.label;
+    },
+
     'weekDayname-tmpl': function(model) {
         var classDate = config.classname('dayname-date');
         var className = config.classname('dayname-name');
 
         return '<span class="' + classDate + '">' + model.date + '</span>&nbsp;&nbsp;<span class="' + className + '">' + model.dayName + '</span>';
-    },
-
-    'monthDayname-tmpl': function(model) {
-        return model.label;
     },
 
     'weekGridFooterExceed-tmpl': function(hiddenSchedules) {
@@ -19811,6 +20383,60 @@ Handlebars.registerHelper({
         var closeIconName = config.classname('ic-arrow-solid-top');
 
         return '<span class="' + iconName + ' ' + closeIconName + '"></span>';
+    },
+
+    'timezoneDisplayLabel-tmpl': function(timezoneOffset, displayLabel) {
+        var gmt, hour, minutes;
+
+        if (util.isUndefined(displayLabel)) {
+            gmt = timezoneOffset < 0 ? '-' : '+';
+            hour = Math.abs(parseInt(timezoneOffset / SIXTY_MINUTES, 10));
+            minutes = Math.abs(timezoneOffset % SIXTY_MINUTES);
+            displayLabel = gmt + datetime.leadingZero(hour, 2) + ':' + datetime.leadingZero(minutes, 2);
+        }
+
+        return displayLabel;
+    },
+
+    'timegridDisplayPrimayTime-tmpl': function(time) {
+        /* TODO: 1.11.0 이후 버전부터 삭제 필요 (will be deprecate) */
+        var meridiem = 'am';
+        var hour = time.hour;
+
+        if (time.hour > 12) {
+            meridiem = 'pm';
+            hour = time.hour - 12;
+        }
+
+        return hour + ' ' + meridiem;
+    },
+
+    'timegridDisplayPrimaryTime-tmpl': function(time) {
+        var meridiem = 'am';
+        var hour = time.hour;
+
+        if (time.hour > 12) {
+            meridiem = 'pm';
+            hour = time.hour - 12;
+        }
+
+        return hour + ' ' + meridiem;
+    },
+
+    'timegridDisplayTime-tmpl': function(time) {
+        return datetime.leadingZero(time.hour, 2) + ':' + datetime.leadingZero(time.minutes, 2);
+    },
+
+    'timegridCurrentTime-tmpl': function(timezone) {
+        var templates = [];
+
+        if (timezone.dateDifference) {
+            templates.push('[' + timezone.dateDifferenceSign + timezone.dateDifference + ']<br>');
+        }
+
+        templates.push(datetime.format(timezone.hourmarker, 'HH:mm'));
+
+        return templates.join('');
     },
 
     'popupIsAllDay-tmpl': function() {
@@ -19860,38 +20486,22 @@ Handlebars.registerHelper({
         return schedule.location;
     },
     'popupDetailUser-tmpl': function(schedule) {
-        var creator = util.pick(schedule, 'raw', 'creator', 'name');
-
-        return creator;
+        return (schedule.attendees || []).join(', ');
     },
     'popupDetailState-tmpl': function(schedule) {
         return schedule.state || 'Busy';
+    },
+    'popupDetailRepeat-tmpl': function(schedule) {
+        return schedule.recurrenceRule;
+    },
+    'popupDetailBody-tmpl': function(schedule) {
+        return schedule.body;
     },
     'popupEdit-tmpl': function() {
         return 'Edit';
     },
     'popupDelete-tmpl': function() {
         return 'Delete';
-    },
-    'timezoneDisplayLabel-tmpl': function(timezoneOffset, displayLabel) {
-        var gmt, hour, minutes;
-
-        if (util.isUndefined(displayLabel)) {
-            gmt = timezoneOffset < 0 ? '-' : '+';
-            hour = Math.abs(parseInt(timezoneOffset / SIXTY_MINUTES, 10));
-            minutes = Math.abs(timezoneOffset % 60);
-            displayLabel = gmt + datetime.leadingZero(hour, 2) + ':' + datetime.leadingZero(minutes, 2);
-        }
-
-        return displayLabel;
-    },
-    'timegridDisplayPrimayTime-tmpl': function(time) {
-        var meridiem = time.hour < 12 ? 'am' : 'pm';
-
-        return time.hour + ' ' + meridiem;
-    },
-    'timegridDisplayTime-tmpl': function(time) {
-        return datetime.leadingZero(time.hour, 2) + ':' + datetime.leadingZero(time.minutes, 2);
     }
 });
 
@@ -20575,7 +21185,7 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
 
   return "                    <li class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "popup-project_-item "
+    + "popup-section-item "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "dropdown-menu-item\" data-calendar-id=\""
     + alias4(((helper = (helper = helpers.id || (depth0 != null ? depth0.id : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"id","hash":{},"data":data}) : helper)))
@@ -20623,13 +21233,13 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "popup-container\">\n        <div class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "popup-project_ "
+    + "popup-section "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "dropdown "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "close "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "project_-calendar"
+    + "section-calendar"
     + ((stack1 = helpers.unless.call(alias1,((stack1 = (depth0 != null ? depth0.calendars : depth0)) != null ? stack1.length : stack1),{"name":"unless","hash":{},"fn":container.program(1, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
     + "\">\n            <button class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
@@ -20637,7 +21247,7 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "dropdown-button "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "popup-project_-item\">\n                <span class=\""
+    + "popup-section-item\">\n                <span class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "icon "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
@@ -20661,11 +21271,11 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + ((stack1 = helpers.each.call(alias1,(depth0 != null ? depth0.calendars : depth0),{"name":"each","hash":{},"fn":container.program(3, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
     + "            </ul>\n        </div>\n        <div class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "popup-project_\">\n            <div class=\""
+    + "popup-section\">\n            <div class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "popup-project_-item "
+    + "popup-section-item "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "project_-title\">\n            <span class=\""
+    + "section-title\">\n            <span class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "icon "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
@@ -20683,7 +21293,7 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "button "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "project_-private"
+    + "section-private"
     + ((stack1 = helpers.unless.call(alias1,(depth0 != null ? depth0.isPrivate : depth0),{"name":"unless","hash":{},"fn":container.program(5, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
     + "\">\n            <span class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
@@ -20691,11 +21301,11 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "ic-private\"></span>\n            </button>\n        </div>\n        <div class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "popup-project_\">\n            <div class=\""
+    + "popup-section\">\n            <div class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "popup-project_-item "
+    + "popup-section-item "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "project_-location\">\n            <span class=\""
+    + "section-location\">\n            <span class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "icon "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
@@ -20709,11 +21319,11 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + alias4(((helper = (helper = helpers.location || (depth0 != null ? depth0.location : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"location","hash":{},"data":data}) : helper)))
     + "\"></span>\n            </div>\n        </div>\n        <div class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "popup-project_\">\n            <div class=\""
+    + "popup-section\">\n            <div class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "popup-project_-item "
+    + "popup-section-item "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "project_-start-date\">\n                <span class=\""
+    + "section-start-date\">\n                <span class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "icon "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
@@ -20727,11 +21337,11 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "startpicker-container\" style=\"margin-left: -1px; position: relative\"></div>\n            </div>\n            <span class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "project_-date-dash\">-</span>\n            <div class=\""
+    + "section-date-dash\">-</span>\n            <div class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "popup-project_-item "
+    + "popup-section-item "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "project_-end-date\">\n                <span class=\""
+    + "section-end-date\">\n                <span class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "icon "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
@@ -20745,9 +21355,9 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "endpicker-container\" style=\"margin-left: -1px; position: relative\"></div>\n            </div>\n            <div class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "popup-project_-item "
+    + "popup-section-item "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "project_-allday\">\n                <input id=\""
+    + "section-allday\">\n                <input id=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "schedule-allday\" type=\"checkbox\" class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
@@ -20763,19 +21373,19 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + alias4(((helper = (helper = helpers["popupIsAllDay-tmpl"] || (depth0 != null ? depth0["popupIsAllDay-tmpl"] : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"popupIsAllDay-tmpl","hash":{},"data":data}) : helper)))
     + "</span>\n            </div>\n        </div>\n        <div class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "popup-project_ "
+    + "popup-section "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "dropdown "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "close "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "project_-state\">\n            <button class=\""
+    + "section-state\">\n            <button class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "button "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "dropdown-button "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "popup-project_-item\">\n                <span class=\""
+    + "popup-section-item\">\n                <span class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "icon "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
@@ -20795,7 +21405,7 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + alias4(((helper = (helper = helpers.zIndex || (depth0 != null ? depth0.zIndex : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"zIndex","hash":{},"data":data}) : helper)))
     + "\">\n                <li class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "popup-project_-item "
+    + "popup-section-item "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "dropdown-menu-item\">\n                <span class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
@@ -20807,7 +21417,7 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + alias4(((helper = (helper = helpers["popupStateBusy-tmpl"] || (depth0 != null ? depth0["popupStateBusy-tmpl"] : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"popupStateBusy-tmpl","hash":{},"data":data}) : helper)))
     + "</span>\n                </li>\n                <li class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "popup-project_-item "
+    + "popup-section-item "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "dropdown-menu-item\">\n                <span class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
@@ -20827,7 +21437,7 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "ic-close\"></span></button>\n        <div class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "project_-button-save\"><button class=\""
+    + "section-button-save\"><button class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "button "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
@@ -20881,12 +21491,42 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "icon "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "ic-repeat-b\"></span><span class=\""
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "content\">"
+    + alias4((helpers["popupDetailRepeat-tmpl"] || (depth0 && depth0["popupDetailRepeat-tmpl"]) || alias2).call(alias1,(depth0 != null ? depth0.schedule : depth0),{"name":"popupDetailRepeat-tmpl","hash":{},"data":data}))
+    + "</span></div>";
+},"5":function(container,depth0,helpers,partials,data) {
+    var helper, alias1=depth0 != null ? depth0 : (container.nullContext || {}), alias2=helpers.helperMissing, alias3="function", alias4=container.escapeExpression;
+
+  return "<div class=\""
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "popup-detail-item "
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "popup-detail-item-indent\"><span class=\""
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "icon "
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "ic-user-b\"></span><span class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "content\">"
     + alias4((helpers["popupDetailUser-tmpl"] || (depth0 && depth0["popupDetailUser-tmpl"]) || alias2).call(alias1,(depth0 != null ? depth0.schedule : depth0),{"name":"popupDetailUser-tmpl","hash":{},"data":data}))
     + "</span></div>";
-},"5":function(container,depth0,helpers,partials,data) {
+},"7":function(container,depth0,helpers,partials,data) {
+    var helper, alias1=depth0 != null ? depth0 : (container.nullContext || {}), alias2=helpers.helperMissing, alias3="function", alias4=container.escapeExpression;
+
+  return "<div class=\""
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "popup-detail-item\"><span class=\""
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "icon "
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "ic-state-b\"></span><span class=\""
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "content\">"
+    + alias4((helpers["popupDetailState-tmpl"] || (depth0 && depth0["popupDetailState-tmpl"]) || alias2).call(alias1,(depth0 != null ? depth0.schedule : depth0),{"name":"popupDetailState-tmpl","hash":{},"data":data}))
+    + "</span></div>";
+},"9":function(container,depth0,helpers,partials,data) {
     var stack1, helper, alias1=depth0 != null ? depth0 : (container.nullContext || {}), alias2=helpers.helperMissing, alias3="function", alias4=container.escapeExpression, alias5=container.lambda;
 
   return "        <div class=\""
@@ -20902,14 +21542,26 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + "content\">"
     + alias4(alias5(((stack1 = (depth0 != null ? depth0.calendar : depth0)) != null ? stack1.name : stack1), depth0))
     + "</span></div>\n";
-},"7":function(container,depth0,helpers,partials,data) {
+},"11":function(container,depth0,helpers,partials,data) {
+    var helper, alias1=depth0 != null ? depth0 : (container.nullContext || {}), alias2=helpers.helperMissing, alias3="function", alias4=container.escapeExpression;
+
+  return "<div class=\""
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "popup-detail-item "
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "popup-detail-item-separate\"><span class=\""
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "content\">"
+    + alias4((helpers["popupDetailBody-tmpl"] || (depth0 && depth0["popupDetailBody-tmpl"]) || alias2).call(alias1,(depth0 != null ? depth0.schedule : depth0),{"name":"popupDetailBody-tmpl","hash":{},"data":data}))
+    + "</span></div>";
+},"13":function(container,depth0,helpers,partials,data) {
     return "";
-},"9":function(container,depth0,helpers,partials,data) {
+},"15":function(container,depth0,helpers,partials,data) {
     var helper, alias1=depth0 != null ? depth0 : (container.nullContext || {}), alias2=helpers.helperMissing, alias3="function", alias4=container.escapeExpression;
 
   return "    <div class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "project_-button\">\n      <button class=\""
+    + "section-button\">\n      <button class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "popup-edit\"><span class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
@@ -20943,9 +21595,9 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "popup-container\">\n    <div class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "popup-project_ "
+    + "popup-section "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "project_-header\">\n      <div>\n        <span class=\""
+    + "section-header\">\n      <div>\n        <span class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "schedule-private "
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
@@ -20963,24 +21615,20 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + alias4((helpers["popupDetailDate-tmpl"] || (depth0 && depth0["popupDetailDate-tmpl"]) || alias2).call(alias1,((stack1 = (depth0 != null ? depth0.schedule : depth0)) != null ? stack1.isAllDay : stack1),((stack1 = (depth0 != null ? depth0.schedule : depth0)) != null ? stack1.start : stack1),((stack1 = (depth0 != null ? depth0.schedule : depth0)) != null ? stack1.end : stack1),{"name":"popupDetailDate-tmpl","hash":{},"data":data}))
     + "</div>\n    </div>\n    <div class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "project_-detail\">\n        "
+    + "section-detail\">\n        "
     + ((stack1 = helpers["if"].call(alias1,((stack1 = (depth0 != null ? depth0.schedule : depth0)) != null ? stack1.location : stack1),{"name":"if","hash":{},"fn":container.program(1, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
     + "\n        "
-    + ((stack1 = helpers["if"].call(alias1,((stack1 = (depth0 != null ? depth0.schedule : depth0)) != null ? stack1.attendees : stack1),{"name":"if","hash":{},"fn":container.program(3, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
-    + "\n        <div class=\""
-    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "popup-detail-item\"><span class=\""
-    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "icon "
-    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "ic-state-b\"></span><span class=\""
-    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
-    + "content\">"
-    + alias4((helpers["popupDetailState-tmpl"] || (depth0 && depth0["popupDetailState-tmpl"]) || alias2).call(alias1,(depth0 != null ? depth0.schedule : depth0),{"name":"popupDetailState-tmpl","hash":{},"data":data}))
-    + "</span></div>\n"
-    + ((stack1 = helpers["if"].call(alias1,(depth0 != null ? depth0.calendar : depth0),{"name":"if","hash":{},"fn":container.program(5, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
-    + "    </div>\n"
-    + ((stack1 = helpers["if"].call(alias1,((stack1 = (depth0 != null ? depth0.schedule : depth0)) != null ? stack1.isReadOnly : stack1),{"name":"if","hash":{},"fn":container.program(7, data, 0),"inverse":container.program(9, data, 0),"data":data})) != null ? stack1 : "")
+    + ((stack1 = helpers["if"].call(alias1,((stack1 = (depth0 != null ? depth0.schedule : depth0)) != null ? stack1.recurrenceRule : stack1),{"name":"if","hash":{},"fn":container.program(3, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
+    + "\n        "
+    + ((stack1 = helpers["if"].call(alias1,((stack1 = (depth0 != null ? depth0.schedule : depth0)) != null ? stack1.attendees : stack1),{"name":"if","hash":{},"fn":container.program(5, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
+    + "\n        "
+    + ((stack1 = helpers["if"].call(alias1,((stack1 = (depth0 != null ? depth0.schedule : depth0)) != null ? stack1.state : stack1),{"name":"if","hash":{},"fn":container.program(7, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
+    + "\n"
+    + ((stack1 = helpers["if"].call(alias1,(depth0 != null ? depth0.calendar : depth0),{"name":"if","hash":{},"fn":container.program(9, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
+    + "        "
+    + ((stack1 = helpers["if"].call(alias1,((stack1 = (depth0 != null ? depth0.schedule : depth0)) != null ? stack1.body : stack1),{"name":"if","hash":{},"fn":container.program(11, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
+    + "\n    </div>\n"
+    + ((stack1 = helpers["if"].call(alias1,((stack1 = (depth0 != null ? depth0.schedule : depth0)) != null ? stack1.isReadOnly : stack1),{"name":"if","hash":{},"fn":container.program(13, data, 0),"inverse":container.program(15, data, 0),"data":data})) != null ? stack1 : "")
     + "  </div>\n  <div class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "popup-top-line\" style=\"background-color: "
@@ -21322,16 +21970,30 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "time-schedule "
     + ((stack1 = helpers["if"].call(alias1,((stack1 = (depth0 != null ? depth0.model : depth0)) != null ? stack1.isFocused : stack1),{"name":"if","hash":{},"fn":container.program(9, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
-    + "\"\n                style=\"border-radius: "
-    + alias4(alias5(((stack1 = ((stack1 = (data && data.root)) && stack1.styles)) && stack1.borderRadius), depth0))
-    + ";\n"
-    + ((stack1 = helpers["if"].call(alias1,((stack1 = (depth0 != null ? depth0.model : depth0)) != null ? stack1.isFocused : stack1),{"name":"if","hash":{},"fn":container.program(11, data, 0),"inverse":container.program(13, data, 0),"data":data})) != null ? stack1 : "")
+    + "\"\n                style=\"\n"
+    + ((stack1 = helpers.unless.call(alias1,(depth0 != null ? depth0.croppedEnd : depth0),{"name":"unless","hash":{},"fn":container.program(11, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
+    + ((stack1 = helpers.unless.call(alias1,(depth0 != null ? depth0.croppedStart : depth0),{"name":"unless","hash":{},"fn":container.program(13, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
+    + ((stack1 = helpers["if"].call(alias1,((stack1 = (depth0 != null ? depth0.model : depth0)) != null ? stack1.isFocused : stack1),{"name":"if","hash":{},"fn":container.program(15, data, 0),"inverse":container.program(17, data, 0),"data":data})) != null ? stack1 : "")
     + "                 "
     + alias4(alias5(((stack1 = (depth0 != null ? depth0.model : depth0)) != null ? stack1.customStyle : stack1), depth0))
-    + "\"\n            >"
+    + "\"\n            >\n"
+    + ((stack1 = helpers["if"].call(alias1,(depth0 != null ? depth0.hasGoingDuration : depth0),{"name":"if","hash":{},"fn":container.program(19, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
+    + "                <div class=\""
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "time-schedule-content "
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "time-schedule-content-time\" style=\"height: "
+    + alias4(((helper = (helper = helpers.modelDurationHeight || (depth0 != null ? depth0.modelDurationHeight : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"modelDurationHeight","hash":{},"data":data}) : helper)))
+    + "px;\n"
+    + ((stack1 = helpers["if"].call(alias1,((stack1 = (depth0 != null ? depth0.model : depth0)) != null ? stack1.isFocused : stack1),{"name":"if","hash":{},"fn":container.program(20, data, 0),"inverse":container.program(22, data, 0),"data":data})) != null ? stack1 : "")
+    + "                "
+    + ((stack1 = helpers["if"].call(alias1,(depth0 != null ? depth0.hasComingDuration : depth0),{"name":"if","hash":{},"fn":container.program(24, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
+    + "\">\n                    "
     + ((stack1 = (helpers["time-tmpl"] || (depth0 && depth0["time-tmpl"]) || alias2).call(alias1,(depth0 != null ? depth0.model : depth0),{"name":"time-tmpl","hash":{},"data":data})) != null ? stack1 : "")
-    + "</div>\n            "
-    + ((stack1 = helpers.unless.call(alias1,(depth0 != null ? depth0.cropped : depth0),{"name":"unless","hash":{},"fn":container.program(15, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
+    + "\n                </div>\n"
+    + ((stack1 = helpers["if"].call(alias1,(depth0 != null ? depth0.hasComingDuration : depth0),{"name":"if","hash":{},"fn":container.program(26, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
+    + "            </div>\n            "
+    + ((stack1 = helpers.unless.call(alias1,(depth0 != null ? depth0.croppedEnd : depth0),{"name":"unless","hash":{},"fn":container.program(29, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
     + "\n        </div>\n";
 },"5":function(container,depth0,helpers,partials,data) {
     var helper;
@@ -21353,12 +22015,28 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
 },"11":function(container,depth0,helpers,partials,data) {
     var stack1, alias1=container.lambda, alias2=container.escapeExpression;
 
+  return "                    border-bottom-left-radius: "
+    + alias2(alias1(((stack1 = ((stack1 = (data && data.root)) && stack1.styles)) && stack1.borderRadius), depth0))
+    + ";\n                    border-bottom-right-radius: "
+    + alias2(alias1(((stack1 = ((stack1 = (data && data.root)) && stack1.styles)) && stack1.borderRadius), depth0))
+    + ";\n";
+},"13":function(container,depth0,helpers,partials,data) {
+    var stack1, alias1=container.lambda, alias2=container.escapeExpression;
+
+  return "                    border-top-left-radius: "
+    + alias2(alias1(((stack1 = ((stack1 = (data && data.root)) && stack1.styles)) && stack1.borderRadius), depth0))
+    + ";\n                    border-top-right-radius: "
+    + alias2(alias1(((stack1 = ((stack1 = (data && data.root)) && stack1.styles)) && stack1.borderRadius), depth0))
+    + ";\n";
+},"15":function(container,depth0,helpers,partials,data) {
+    var stack1, alias1=container.lambda, alias2=container.escapeExpression;
+
   return "                    color: #ffffff; background-color:"
     + alias2(alias1(((stack1 = (depth0 != null ? depth0.model : depth0)) != null ? stack1.color : stack1), depth0))
     + "; border-color:"
     + alias2(alias1(((stack1 = (depth0 != null ? depth0.model : depth0)) != null ? stack1.color : stack1), depth0))
     + ";\n";
-},"13":function(container,depth0,helpers,partials,data) {
+},"17":function(container,depth0,helpers,partials,data) {
     var stack1, alias1=container.lambda, alias2=container.escapeExpression;
 
   return "                    color:"
@@ -21368,7 +22046,61 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + "; border-color:"
     + alias2(alias1(((stack1 = (depth0 != null ? depth0.model : depth0)) != null ? stack1.borderColor : stack1), depth0))
     + ";\n";
-},"15":function(container,depth0,helpers,partials,data) {
+},"19":function(container,depth0,helpers,partials,data) {
+    var stack1, helper, alias1=depth0 != null ? depth0 : (container.nullContext || {}), alias2=helpers.helperMissing, alias3="function", alias4=container.escapeExpression;
+
+  return "                <div class=\""
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "time-schedule-content "
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "time-schedule-content-travel-time\" style=\"height: "
+    + alias4(((helper = (helper = helpers.goingDurationHeight || (depth0 != null ? depth0.goingDurationHeight : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"goingDurationHeight","hash":{},"data":data}) : helper)))
+    + "px;\n"
+    + ((stack1 = helpers["if"].call(alias1,((stack1 = (depth0 != null ? depth0.model : depth0)) != null ? stack1.isFocused : stack1),{"name":"if","hash":{},"fn":container.program(20, data, 0),"inverse":container.program(22, data, 0),"data":data})) != null ? stack1 : "")
+    + "                border-bottom: 1px dashed "
+    + alias4(((helper = (helper = helpers.travelBorderColor || (depth0 != null ? depth0.travelBorderColor : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"travelBorderColor","hash":{},"data":data}) : helper)))
+    + ";\">"
+    + ((stack1 = (helpers["goingDuration-tmpl"] || (depth0 && depth0["goingDuration-tmpl"]) || alias2).call(alias1,(depth0 != null ? depth0.model : depth0),{"name":"goingDuration-tmpl","hash":{},"data":data})) != null ? stack1 : "")
+    + "</div>\n";
+},"20":function(container,depth0,helpers,partials,data) {
+    var stack1;
+
+  return "                    border-color:"
+    + container.escapeExpression(container.lambda(((stack1 = (depth0 != null ? depth0.model : depth0)) != null ? stack1.color : stack1), depth0))
+    + ";\n";
+},"22":function(container,depth0,helpers,partials,data) {
+    var stack1;
+
+  return "                    border-color:"
+    + container.escapeExpression(container.lambda(((stack1 = (depth0 != null ? depth0.model : depth0)) != null ? stack1.borderColor : stack1), depth0))
+    + ";\n";
+},"24":function(container,depth0,helpers,partials,data) {
+    var helper;
+
+  return "border-bottom: 1px dashed "
+    + container.escapeExpression(((helper = (helper = helpers.travelBorderColor || (depth0 != null ? depth0.travelBorderColor : depth0)) != null ? helper : helpers.helperMissing),(typeof helper === "function" ? helper.call(depth0 != null ? depth0 : (container.nullContext || {}),{"name":"travelBorderColor","hash":{},"data":data}) : helper)))
+    + ";";
+},"26":function(container,depth0,helpers,partials,data) {
+    var stack1, helper, alias1=depth0 != null ? depth0 : (container.nullContext || {}), alias2=helpers.helperMissing, alias3="function", alias4=container.escapeExpression;
+
+  return "                <div class=\""
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "time-schedule-content "
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "time-schedule-content-travel-time\" style=\"height: "
+    + alias4(((helper = (helper = helpers.comingDurationHeight || (depth0 != null ? depth0.comingDurationHeight : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"comingDurationHeight","hash":{},"data":data}) : helper)))
+    + "px;\n"
+    + ((stack1 = helpers["if"].call(alias1,((stack1 = (depth0 != null ? depth0.model : depth0)) != null ? stack1.isFocused : stack1),{"name":"if","hash":{},"fn":container.program(20, data, 0),"inverse":container.program(27, data, 0),"data":data})) != null ? stack1 : "")
+    + ";\">"
+    + ((stack1 = (helpers["comingDuration-tmpl"] || (depth0 && depth0["comingDuration-tmpl"]) || alias2).call(alias1,(depth0 != null ? depth0.model : depth0),{"name":"comingDuration-tmpl","hash":{},"data":data})) != null ? stack1 : "")
+    + "</div>\n";
+},"27":function(container,depth0,helpers,partials,data) {
+    var stack1;
+
+  return "                    border-color:"
+    + container.escapeExpression(container.lambda(((stack1 = (depth0 != null ? depth0.model : depth0)) != null ? stack1.borderColor : stack1), depth0))
+    + ";\n                ";
+},"29":function(container,depth0,helpers,partials,data) {
     var stack1, helper, alias1=container.escapeExpression;
 
   return "<div class=\""
@@ -21439,7 +22171,7 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + ";\">\n                    <span style=\""
     + ((stack1 = helpers["if"].call(alias1,(depth0 != null ? depth0.hidden : depth0),{"name":"if","hash":{},"fn":container.program(6, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
     + "\">"
-    + ((stack1 = (helpers["timegridDisplayPrimayTime-tmpl"] || (depth0 && depth0["timegridDisplayPrimayTime-tmpl"]) || alias2).call(alias1,depth0,{"name":"timegridDisplayPrimayTime-tmpl","hash":{},"data":data})) != null ? stack1 : "")
+    + ((stack1 = (helpers["timegridDisplayPrimaryTime-tmpl"] || (depth0 && depth0["timegridDisplayPrimaryTime-tmpl"]) || alias2).call(alias1,depth0,{"name":"timegridDisplayPrimaryTime-tmpl","hash":{},"data":data})) != null ? stack1 : "")
     + "</span>\n                </div>\n";
 },"6":function(container,depth0,helpers,partials,data) {
     return "display:none";
@@ -21463,7 +22195,7 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + "; font-weight: "
     + alias4(alias5(((stack1 = ((stack1 = (data && data.root)) && stack1.styles)) && stack1.currentTimeFontWeight), depth0))
     + "\">"
-    + ((stack1 = ((helper = (helper = helpers.hourmarkerText || (depth0 != null ? depth0.hourmarkerText : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"hourmarkerText","hash":{},"data":data}) : helper))) != null ? stack1 : "")
+    + ((stack1 = (helpers["timegridCurrentTime-tmpl"] || (depth0 && depth0["timegridCurrentTime-tmpl"]) || alias2).call(alias1,depth0,{"name":"timegridCurrentTime-tmpl","hash":{},"data":data})) != null ? stack1 : "")
     + "</div>\n                </div>\n";
 },"10":function(container,depth0,helpers,partials,data) {
     var stack1, alias1=depth0 != null ? depth0 : (container.nullContext || {});
@@ -21504,7 +22236,7 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + "; font-size: "
     + alias4(alias5(((stack1 = ((stack1 = (data && data.root)) && stack1.styles)) && stack1.currentTimeFontSize), depth0))
     + ";\">"
-    + ((stack1 = ((helper = (helper = helpers.hourmarkerText || (depth0 != null ? depth0.hourmarkerText : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"hourmarkerText","hash":{},"data":data}) : helper))) != null ? stack1 : "")
+    + ((stack1 = (helpers["timegridCurrentTime-tmpl"] || (depth0 && depth0["timegridCurrentTime-tmpl"]) || alias2).call(alias1,depth0,{"name":"timegridCurrentTime-tmpl","hash":{},"data":data})) != null ? stack1 : "")
     + "</div>\n                </div>\n";
 },"15":function(container,depth0,helpers,partials,data) {
     var stack1, helper, alias1=depth0 != null ? depth0 : (container.nullContext || {}), alias2=helpers.helperMissing, alias3="function", alias4=container.escapeExpression, alias5=container.lambda;
@@ -21592,6 +22324,23 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
 
 /***/ }),
 
+/***/ "./src/js/view/template/week/timeGridCurrentTime.hbs":
+/*!***********************************************************!*\
+  !*** ./src/js/view/template/week/timeGridCurrentTime.hbs ***!
+  \***********************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+var Handlebars = __webpack_require__(/*! ./node_modules/handlebars/runtime.js */ "./node_modules/handlebars/runtime.js");
+module.exports = (Handlebars['default'] || Handlebars).template({"compiler":[7,">= 4.0.0"],"main":function(container,depth0,helpers,partials,data) {
+    var stack1;
+
+  return ((stack1 = (helpers["timegridCurrentTime-tmpl"] || (depth0 && depth0["timegridCurrentTime-tmpl"]) || helpers.helperMissing).call(depth0 != null ? depth0 : (container.nullContext || {}),depth0,{"name":"timegridCurrentTime-tmpl","hash":{},"data":data})) != null ? stack1 : "")
+    + "\n";
+},"useData":true});
+
+/***/ }),
+
 /***/ "./src/js/view/template/week/timeMoveGuide.hbs":
 /*!*****************************************************!*\
   !*** ./src/js/view/template/week/timeMoveGuide.hbs ***!
@@ -21601,6 +22350,38 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
 
 var Handlebars = __webpack_require__(/*! ./node_modules/handlebars/runtime.js */ "./node_modules/handlebars/runtime.js");
 module.exports = (Handlebars['default'] || Handlebars).template({"1":function(container,depth0,helpers,partials,data) {
+    var stack1, helper, alias1=depth0 != null ? depth0 : (container.nullContext || {}), alias2=helpers.helperMissing, alias3="function", alias4=container.escapeExpression, alias5=container.lambda;
+
+  return "            <div class=\""
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "time-schedule-content "
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "time-schedule-content-travel-time\" style=\"border-color:"
+    + alias4(alias5(((stack1 = (depth0 != null ? depth0.model : depth0)) != null ? stack1.borderColor : stack1), depth0))
+    + "; border-bottom: 1px dashed "
+    + alias4(alias5(((stack1 = (depth0 != null ? depth0.model : depth0)) != null ? stack1.color : stack1), depth0))
+    + "; height: "
+    + alias4(((helper = (helper = helpers.goingDurationHeight || (depth0 != null ? depth0.goingDurationHeight : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"goingDurationHeight","hash":{},"data":data}) : helper)))
+    + "%;\">"
+    + ((stack1 = (helpers["goingDuration-tmpl"] || (depth0 && depth0["goingDuration-tmpl"]) || alias2).call(alias1,(depth0 != null ? depth0.model : depth0),{"name":"goingDuration-tmpl","hash":{},"data":data})) != null ? stack1 : "")
+    + "</div>\n";
+},"3":function(container,depth0,helpers,partials,data) {
+    var stack1, helper, alias1=depth0 != null ? depth0 : (container.nullContext || {}), alias2=helpers.helperMissing, alias3="function", alias4=container.escapeExpression, alias5=container.lambda;
+
+  return "            <div class=\""
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "time-schedule-content "
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "time-schedule-content-travel-time\" style=\"border-color:"
+    + alias4(alias5(((stack1 = (depth0 != null ? depth0.model : depth0)) != null ? stack1.borderColor : stack1), depth0))
+    + "; border-top: 1px dashed "
+    + alias4(alias5(((stack1 = (depth0 != null ? depth0.model : depth0)) != null ? stack1.color : stack1), depth0))
+    + "; height: "
+    + alias4(((helper = (helper = helpers.comingDurationHeight || (depth0 != null ? depth0.comingDurationHeight : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"comingDurationHeight","hash":{},"data":data}) : helper)))
+    + "%;\">"
+    + ((stack1 = (helpers["comingDuration-tmpl"] || (depth0 && depth0["comingDuration-tmpl"]) || alias2).call(alias1,(depth0 != null ? depth0.model : depth0),{"name":"comingDuration-tmpl","hash":{},"data":data})) != null ? stack1 : "")
+    + "</div>\n";
+},"5":function(container,depth0,helpers,partials,data) {
     var helper;
 
   return "<div class=\""
@@ -21619,12 +22400,20 @@ module.exports = (Handlebars['default'] || Handlebars).template({"1":function(co
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "time-date-schedule-block-focused\" style=\"color: #ffffff; background-color:"
     + alias4(alias5(((stack1 = (depth0 != null ? depth0.model : depth0)) != null ? stack1.dragBgColor : stack1), depth0))
-    + "; border-color:"
+    + ";\">\n"
+    + ((stack1 = helpers["if"].call(alias1,(depth0 != null ? depth0.hasGoingDuration : depth0),{"name":"if","hash":{},"fn":container.program(1, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
+    + "            <div class=\""
+    + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
+    + "time-schedule-content\" style=\"height: "
+    + alias4(((helper = (helper = helpers.modelDurationHeight || (depth0 != null ? depth0.modelDurationHeight : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"modelDurationHeight","hash":{},"data":data}) : helper)))
+    + "%; border-color:"
     + alias4(alias5(((stack1 = (depth0 != null ? depth0.model : depth0)) != null ? stack1.borderColor : stack1), depth0))
-    + ";\">"
+    + ";\">\n                "
     + ((stack1 = (helpers["time-tmpl"] || (depth0 && depth0["time-tmpl"]) || alias2).call(alias1,(depth0 != null ? depth0.model : depth0),{"name":"time-tmpl","hash":{},"data":data})) != null ? stack1 : "")
-    + "</div>\n    "
-    + ((stack1 = helpers.unless.call(alias1,(depth0 != null ? depth0.cropped : depth0),{"name":"unless","hash":{},"fn":container.program(1, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
+    + "\n            </div>\n"
+    + ((stack1 = helpers["if"].call(alias1,(depth0 != null ? depth0.hasComingDuration : depth0),{"name":"if","hash":{},"fn":container.program(3, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
+    + "    </div>\n    "
+    + ((stack1 = helpers.unless.call(alias1,(depth0 != null ? depth0.croppedEnd : depth0),{"name":"unless","hash":{},"fn":container.program(5, data, 0),"inverse":container.noop,"data":data})) != null ? stack1 : "")
     + "\n    <div class=\""
     + alias4(((helper = (helper = helpers.CSS_PREFIX || (depth0 != null ? depth0.CSS_PREFIX : depth0)) != null ? helper : alias2),(typeof helper === alias3 ? helper.call(alias1,{"name":"CSS_PREFIX","hash":{},"data":data}) : helper)))
     + "time-date-schedule-block-cover\"></div>\n</div>\n";
@@ -22604,6 +23393,7 @@ var View = __webpack_require__(/*! ../view */ "./src/js/view/view.js");
 var timeTmpl = __webpack_require__(/*! ../template/week/time.hbs */ "./src/js/view/template/week/time.hbs");
 
 var forEachArr = util.forEachArray;
+var SCHEDULE_MIN_DURATION = datetime.MILLISECONDS_SCHEDULE_MIN_DURATION;
 
 /**
  * @constructor
@@ -22667,6 +23457,81 @@ Time.prototype._parseDateGroup = function(str) {
 };
 
 /**
+ * calculate left and width
+ * @param {ScheduleViewModel} viewModel - view model instance to calculate bound.
+ * @param {object} options - options for calculating schedule element's bound.
+ * @returns {object} - left and width
+ */
+Time.prototype._getScheduleViewBoundX = function(viewModel, options) {
+    var width = options.baseWidth * (viewModel.extraSpace + 1);
+
+    // set width auto when has no collisions.
+    if (!viewModel.hasCollide) {
+        width = null;
+    }
+
+    return {
+        left: options.baseLeft[options.columnIndex],
+        width: width
+    };
+};
+
+/**
+ * calculate top, height, croppedStart and croppedEnd
+ * @param {ScheduleViewModel} viewModel - view model instance to calculate bound.
+ * @param {object} options - options for calculating schedule element's bound.
+ * @returns {object} - left and width
+ */
+Time.prototype._getScheduleViewBoundY = function(viewModel, options) {
+    var baseMS = options.baseMS;
+    var baseHeight = options.baseHeight;
+    var croppedStart = false;
+    var croppedEnd = false;
+    var goingDuration = datetime.millisecondsFrom('minutes', viewModel.valueOf().goingDuration);
+    var comingDuration = datetime.millisecondsFrom('minutes', viewModel.valueOf().comingDuration);
+    var offsetStart = viewModel.valueOf().start - goingDuration - options.todayStart;
+    // containerHeight : milliseconds in day = x : schedule's milliseconds
+    var top = (baseHeight * offsetStart) / baseMS;
+    var modelDuration = viewModel.duration().getTime();
+    var height;
+    var duration;
+    var goingDurationHeight;
+    var modelDurationHeight;
+    var comingDurationHeight;
+
+    modelDuration = modelDuration > SCHEDULE_MIN_DURATION ? modelDuration : SCHEDULE_MIN_DURATION;
+    duration = modelDuration + goingDuration + comingDuration;
+    height = (baseHeight * duration) / baseMS;
+
+    goingDurationHeight = (baseHeight * goingDuration) / baseMS; // common.ratio(duration, goingDuration, 100);
+    modelDurationHeight = (baseHeight * modelDuration) / baseMS; // common.ratio(duration, modelDuration, 100);
+    comingDurationHeight = (baseHeight * comingDuration) / baseMS; // common.ratio(duration, comingDuration, 100);
+
+    if (offsetStart < 0) {
+        top = 0;
+        height += ((baseHeight * offsetStart) / baseMS);
+        croppedStart = true;
+    }
+
+    if (height + top > baseHeight) {
+        height = baseHeight - top;
+        croppedEnd = true;
+    }
+
+    return {
+        top: top,
+        height: Math.max(height, this.options.minHeight) - this.options.defaultMarginBottom,
+        modelDurationHeight: modelDurationHeight,
+        goingDurationHeight: goingDurationHeight,
+        comingDurationHeight: comingDurationHeight,
+        hasGoingDuration: goingDuration > 0,
+        hasComingDuration: comingDuration > 0,
+        croppedStart: croppedStart,
+        croppedEnd: croppedEnd
+    };
+};
+
+/**
  * @param {ScheduleViewModel} viewModel - view model instance to calculate bound.
  * @param {object} options - options for calculating schedule element's bound.
  * @param {Date} options.todayStart - date object represent schedule date's start (00:00:00)
@@ -22679,40 +23544,19 @@ Time.prototype._parseDateGroup = function(str) {
  * @returns {object} bound object for supplied view model.
  */
 Time.prototype.getScheduleViewBound = function(viewModel, options) {
-    var baseMS = options.baseMS;
-    var baseHeight = options.baseHeight;
-    var cropped = false;
-    var offsetStart, width, height, top;
-    var isReadOnly = util.pick(viewModel, 'model', 'isReadOnly') || false;
-
-    offsetStart = viewModel.valueOf().start - options.todayStart;
-
-    // containerHeight : milliseconds in day = x : schedule's milliseconds
-    top = (baseHeight * offsetStart) / baseMS;
-    height = (baseHeight * viewModel.duration()) / baseMS;
-    width = options.baseWidth * (viewModel.extraSpace + 1);
-
-    // set width auto when has no collisions.
-    if (!viewModel.hasCollide) {
-        width = null;
+    var boundX = this._getScheduleViewBoundX(viewModel, options);
+    var boundY = this._getScheduleViewBoundY(viewModel, options);
+    var schedule = viewModel.model;
+    var isReadOnly = util.pick(schedule, 'isReadOnly') || false;
+    var travelBorderColor = schedule.isFocused ? '#ffffff' : schedule.borderColor;
+    if (travelBorderColor === schedule.bgColor) {
+        travelBorderColor = null; // follow text color
     }
 
-    if (height + top > baseHeight) {
-        height = baseHeight - top;
-        cropped = true;
-    }
-
-    if (isReadOnly || options.isReadOnly) {
-        cropped = true;
-    }
-
-    return {
-        top: top,
-        left: options.baseLeft[options.columnIndex],
-        width: width,
-        height: Math.max(height, this.options.minHeight) - this.options.defaultMarginBottom,
-        cropped: cropped
-    };
+    return util.extend({
+        isReadOnly: isReadOnly,
+        travelBorderColor: travelBorderColor
+    }, boundX, boundY);
 };
 
 /**
@@ -22861,6 +23705,7 @@ var Time = __webpack_require__(/*! ./time */ "./src/js/view/week/time.js");
 var AutoScroll = __webpack_require__(/*! ../../common/autoScroll */ "./src/js/common/autoScroll.js");
 var mainTmpl = __webpack_require__(/*! ../template/week/timeGrid.hbs */ "./src/js/view/template/week/timeGrid.hbs");
 var timezoneStickyTmpl = __webpack_require__(/*! ../template/week/timezoneSticky.hbs */ "./src/js/view/template/week/timezoneSticky.hbs");
+var timegridCurrentTimeTmpl = __webpack_require__(/*! ../template/week/timeGridCurrentTime.hbs */ "./src/js/view/template/week/timeGridCurrentTime.hbs");
 var TZDate = Timezone.Date;
 var HOURMARKER_REFRESH_INTERVAL = 1000 * 60;
 var SIXTY_SECONDS = 60;
@@ -23087,7 +23932,7 @@ TimeGrid.prototype._getTopPercentByTime = function(time) {
 TimeGrid.prototype._getHourmarkerViewModel = function(now, grids, range) {
     var todaymarkerLeft = -1;
     var todaymarkerWidth = -1;
-    var hourmarkerTexts = [];
+    var hourmarkerTimzones = [];
     var opt = this.options;
     var primaryOffset = Timezone.getOffset();
     var timezones = opt.timezones;
@@ -23105,26 +23950,22 @@ TimeGrid.prototype._getHourmarkerViewModel = function(now, grids, range) {
     util.forEach(timezones, function(timezone) {
         var timezoneDifference = timezone.timezoneOffset + primaryOffset;
         var hourmarker = new TZDate(now);
-        var texts = [];
         var dateDifference;
 
         hourmarker.setMinutes(hourmarker.getMinutes() + timezoneDifference);
-
         dateDifference = hourmarker.getDate() - now.getDate();
-        if (dateDifference < 0) {
-            texts.push('[-' + Math.abs(dateDifference) + ']<br>');
-        } else if (dateDifference > 0) {
-            texts.push('[+' + Math.abs(dateDifference) + ']<br>');
-        }
 
-        texts.push(datetime.format(hourmarker, 'HH:mm'));
-        hourmarkerTexts.push(texts.join(''));
+        hourmarkerTimzones.push({
+            hourmarker: hourmarker,
+            dateDifferenceSign: (dateDifference < 0) ? '-' : '+',
+            dateDifference: Math.abs(dateDifference)
+        });
     });
 
     viewModel = {
         currentHours: now.getHours(),
         hourmarkerTop: this._getTopPercentByTime(now),
-        hourmarkerTexts: hourmarkerTexts,
+        hourmarkerTimzones: hourmarkerTimzones,
         todaymarkerLeft: todaymarkerLeft,
         todaymarkerWidth: todaymarkerWidth,
         todaymarkerRight: todaymarkerLeft + todaymarkerWidth
@@ -23153,7 +23994,6 @@ TimeGrid.prototype._getTimezoneViewModel = function(currentHours, timezonesColla
 
     util.forEach(timezones, function(timezone, index) {
         var hourmarker = new TZDate(now);
-        var texts = [];
         var timezoneDifference;
         var timeSlots;
         var dateDifference;
@@ -23162,15 +24002,7 @@ TimeGrid.prototype._getTimezoneViewModel = function(currentHours, timezonesColla
         timeSlots = getHoursLabels(opt, currentHours >= 0, timezoneDifference, styles);
 
         hourmarker.setMinutes(hourmarker.getMinutes() + timezoneDifference);
-
         dateDifference = hourmarker.getDate() - now.getDate();
-        if (dateDifference < 0) {
-            texts.push('[-' + Math.abs(dateDifference) + ']<br>');
-        } else if (dateDifference > 0) {
-            texts.push('[+' + Math.abs(dateDifference) + ']<br>');
-        }
-
-        texts.push(datetime.format(hourmarker, 'HH:mm'));
 
         if (index > 0) {
             backgroundColor = styles.additionalTimezoneBackgroundColor;
@@ -23184,9 +24016,11 @@ TimeGrid.prototype._getTimezoneViewModel = function(currentHours, timezonesColla
             width: width,
             left: collapsed ? 0 : (timezones.length - index - 1) * width,
             isPrimary: index === 0,
-            hourmarkerText: texts.join(''),
             backgroundColor: backgroundColor || '',
-            hidden: index !== 0 && collapsed
+            hidden: index !== 0 && collapsed,
+            hourmarker: hourmarker,
+            dateDifferenceSign: (dateDifference < 0) ? '-' : '+',
+            dateDifference: Math.abs(dateDifference)
         });
     });
 
@@ -23363,7 +24197,7 @@ TimeGrid.prototype.refreshHourmarker = function() {
         } else {
             util.forEach(hourmarkers, function(hourmarker) {
                 var todaymarker = domutil.find(config.classname('.timegrid-todaymarker'), hourmarker);
-                var hourmarkerText = domutil.find(config.classname('.timegrid-hourmarker-time'), hourmarker);
+                var hourmarkerContainer = domutil.find(config.classname('.timegrid-hourmarker-time'), hourmarker);
                 var timezone = domutil.closest(hourmarker, config.classname('.timegrid-timezone'));
                 var timezoneIndex = timezone ? domutil.getData(timezone, 'timezoneIndex') : 0;
 
@@ -23372,8 +24206,10 @@ TimeGrid.prototype.refreshHourmarker = function() {
                 if (todaymarker) {
                     todaymarker.style.display = (baseViewModel.todaymarkerLeft >= 0) ? 'block' : 'none';
                 }
-                if (hourmarkerText) {
-                    hourmarkerText.innerHTML = baseViewModel.hourmarkerTexts[timezoneIndex];
+                if (hourmarkerContainer) {
+                    hourmarkerContainer.innerHTML = timegridCurrentTimeTmpl(
+                        baseViewModel.hourmarkerTimzones[timezoneIndex]
+                    );
                 }
             });
         }
@@ -23588,16 +24424,18 @@ function Week(controller, options, container, panels) {
      * @type {object} Options for view.
      */
     this.options = util.extend({
-        scheduleFilter: function(schedule) {
+        scheduleFilter: [function(schedule) {
             return Boolean(schedule.isVisible);
-        },
+        }],
         renderStartDate: datetime.format(range.start, 'YYYY-MM-DD'),
         renderEndDate: datetime.format(range.end, 'YYYY-MM-DD'),
         narrowWeekend: false,
         startDayOfWeek: 0,
         workweek: false,
         showTimezoneCollapseButton: false,
-        timezonesCollapsed: false
+        timezonesCollapsed: false,
+        hourStart: 0,
+        hourEnd: 24
     }, options);
 
     /**
@@ -23665,7 +24503,8 @@ Week.prototype.render = function() {
         datetime.start(renderStartDate),
         datetime.end(renderEndDate),
         this.panels,
-        scheduleFilter
+        scheduleFilter,
+        this.options
     );
 
     grids = datetime.getGridLeftAndWidth(

@@ -8,6 +8,27 @@
 projects = projects || {};
 var changes = {"deleted": [], "created": []};
 
+// Count working days https://stackoverflow.com/a/48938331/2036148
+function getNumWorkDays(startDate, endDate) {
+    var numWorkDays = 0;
+    var currentDate = new Date(startDate);
+    while (currentDate <= endDate) {
+        // Skips Sunday and Saturday
+        if (currentDate.getDay() !== 0 && currentDate.getDay() !== 6) {
+            numWorkDays++;
+        }
+        currentDate = currentDate.addDays(1);
+    }
+    return numWorkDays;
+}
+
+// Update Person's count (number of working days that they're in the lead)
+function person_count(person, count) {
+    let $counter = $(".lnb-calendars-item input[name=person][value='" + person + "'] + span + strong > .count");
+    if ($counter) {
+        $counter.text(parseInt($counter.text()) + count);
+    }
+}
 
 
 // Initialize calendars
@@ -88,23 +109,37 @@ for (let project_id in projects) {
             // schedule.start = schedule.start.getTime();
             // schedule.end = schedule.end.getTime();
             changes["created"].push(schedule);
+            person_count(schedule.title, getNumWorkDays(schedule.start, schedule.end));
             savable();
         },
         'beforeUpdateSchedule': function (e) {
             console.log('beforeUpdateSchedule', e);
             if (e.start && e.end) {
+                person_count(e.schedule.title, getNumWorkDays(e.start, e.end)-getNumWorkDays(e.schedule.start, e.schedule.end));
                 e.schedule.start = e.start;
                 e.schedule.end = e.end;
                 console.log('Line 101 e.start(): ', e);
                 cal.updateSchedule(e.schedule.id, e.schedule.calendarId, e.schedule);
                 changes["created"].push(e.schedule);
+                for (let schedule of ScheduleList) {
+                    // we have to manually replace event in ScheduleList
+                    // – otherwise when we change month, the schedule would have been displayed with old parameters
+                    if (schedule.id === e.schedule.id) {
+                        schedule.start = e.schedule.start;
+                        schedule.end = e.schedule.end;
+                    }
+                }
             }
             savable();
         },
         'beforeDeleteSchedule': function (e) {
+            // cancel updates of this schedule (so that it's not recreated when immediately deleted)
+            changes["created"] = changes["created"].filter(change => change.id !== e.schedule.id);
+            ScheduleList = ScheduleList.filter(schedule => schedule.id != e.schedule.id);
             changes["deleted"].push(e.schedule.id);
             console.log('beforeDeleteSchedule', e);
             cal.deleteSchedule(e.schedule.id, e.schedule.calendarId);
+            person_count(e.schedule.title, -getNumWorkDays(e.schedule.start, e.schedule.end));// recount days
             savable();
         },
         'afterRenderSchedule': function (e) {
@@ -134,6 +169,22 @@ for (let project_id in projects) {
     let dirty = false;
     $(".save-button").click(function () {
         $(".save-button").prop("disabled", true);
+
+        // assure ICS date – my UTC server got 22:00 instead of 00:00, stripped the time and shifted the schedule date
+        for (let change of changes["created"]) {
+            // for(let pos of ["start", "end"]) {
+            //     let d = change[pos].toDate();
+            //     change[pos+"-ics"] = d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2);
+            // }
+            //change["end-ics"] += "2359"
+            let date2ics = (d) => {
+                return d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2);
+            };
+
+            // Different DTEND formats: days 2019-03-02 and 2019-03-03 in SoGo 2019-03-02 – 04, in Tui.Calendar 2019-03-02 – 03
+            change["start-ics"] = date2ics(change.start._date);
+            change["end-ics"] = date2ics(change.end._date.addDays(1));
+        }
         $.ajax({
             "url": "/change",
             "method": "post",
@@ -141,7 +192,7 @@ for (let project_id in projects) {
             "contentType": "application/json",
             "success": (data) => {
                 dirty = false;
-                $("#menu-navi [data-action!=save]").prop("disabled", false)
+                //X$("#menu-navi [data-action!=save]").prop("disabled", false)
                 changes = {"deleted": [], "created": []}; // reset changelog
                 alert(data);
             }
@@ -149,7 +200,7 @@ for (let project_id in projects) {
     });
 
     function savable() {
-        $("#menu-navi [data-action!=save]").prop("disabled", true); // XX we have to save before changing a single month :(
+        //X$("#menu-navi [data-action!=save]").prop("disabled", true); // XX we have to save before changing a single month :(
         $(".save-button").prop("disabled", false);
         dirty = true;
     }
@@ -169,7 +220,7 @@ for (let project_id in projects) {
                     html.push(`<label>
                         <input name="person" type="radio" value="${person}" checked>
                         <span></span>
-                        <strong>${person} ${count}</strong>
+                        <strong>${person} <span class="count">${count}</span></strong>
                     </label>
                     <br />`);
                 }

@@ -229,3 +229,5 @@ body {
     height: 12px;
     margin-right: 2px;
 }
+/** disable Edit button on event-clicked popup; only Delete button remains visible */
+.tui-full-calendar-popup-edit {display:none}
