@@ -231,3 +231,10 @@ body {
 }
 /** disable Edit button on event-clicked popup; only Delete button remains visible */
 .tui-full-calendar-popup-edit {display:none}
+
+label.suggested {
+  width: 125%;
+  background-color: #eee;
+  border-radius: 50%;
+  display: inline-block;
+}

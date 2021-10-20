@@ -46,7 +46,7 @@ Examples – send the notification:
         ./scheduler.py notify my_project ending all, another_project ending all
     to the shift owner if the shift is starting but don't send info if no shift is taken    
         ./scheduler.py notify my_project starting owner mute
-    to an e-mail when that is the last day of a shift on any project    
+    to an e-mail when this is the last day of a shift on any project    
         ./scheduler.py notify all ending example@example.com
          
 """
@@ -64,7 +64,6 @@ def caldav2events(caldav_events):
 
 
 # monkey patch method
-
 def project_and_name(event):
     try:
         project, name = event["summary"].split(" ", 1)

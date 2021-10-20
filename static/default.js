@@ -217,10 +217,12 @@ for (let project_id in projects) {
         for (let [project_id, project] of Object.entries(projects)) {
             if (project_id === CalendarList.checkedId) {
                 for (let [person, count] of Object.entries(project)) {
-                    html.push(`<label>
+                    let c  = count > 0?("+"+count):"← suggested";
+                    let style = count > 0?"":" class=suggested";
+                    html.push(`<label${style}>
                         <input name="person" type="radio" value="${person}" checked>
                         <span></span>
-                        <strong>${person} <span class="count">${count}</span></strong>
+                        <strong>${person} <span class="count">${c}</span></strong>
                     </label>
                     <br />`);
                 }
