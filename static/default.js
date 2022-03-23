@@ -26,7 +26,9 @@ function getNumWorkDays(startDate, endDate) {
 function person_count(person, count) {
     let $counter = $(".lnb-calendars-item input[name=person][value='" + person + "'] + span + strong > .count");
     if ($counter) {
-        $counter.text(parseInt($counter.text()) + count);
+        const recounted = $counter.data("count") + count * $counter.data("coefficient")
+        $counter.data("count", recounted)
+        $counter.text(Math.round(recounted))
     }
 }
 
@@ -48,7 +50,7 @@ for (let project_id in projects) {
 }
 
 
-(function (window, Calendar) {
+(function(window, Calendar) {
     let cal, resizeThrottled;
     let useDetailPopup = true;
     let selectedCalendar;
@@ -64,7 +66,7 @@ for (let project_id in projects) {
         }
     });
 
-    Date.prototype.addDays = function (days) {
+    Date.prototype.addDays = function(days) {
         let date = new Date(this.valueOf());
         date.setDate(date.getDate() + days);
         return date;
@@ -73,16 +75,16 @@ for (let project_id in projects) {
 
     // event handlers
     cal.on({
-        'clickMore': function (e) {
+        'clickMore': function(e) {
             console.log('clickMore', e);
         },
-        'clickSchedule': function (e) {
+        'clickSchedule': function(e) {
             console.log('clickSchedule', e);
         },
-        'clickDayname': function (date) {
+        'clickDayname': function(date) {
             console.log('clickDayname', date);
         },
-        'beforeCreateSchedule': function (scheduleData) {
+        'beforeCreateSchedule': function(scheduleData) {
             console.log('beforeCreateSchedule', scheduleData);
 
             scheduleData.title = document.querySelector("#lnb-calendars input[name=person]:checked").value;
@@ -112,10 +114,10 @@ for (let project_id in projects) {
             person_count(schedule.title, getNumWorkDays(schedule.start, schedule.end));
             savable();
         },
-        'beforeUpdateSchedule': function (e) {
+        'beforeUpdateSchedule': function(e) {
             console.log('beforeUpdateSchedule', e);
             if (e.start && e.end) {
-                person_count(e.schedule.title, getNumWorkDays(e.start, e.end)-getNumWorkDays(e.schedule.start, e.schedule.end));
+                person_count(e.schedule.title, getNumWorkDays(e.start, e.end) - getNumWorkDays(e.schedule.start, e.schedule.end));
                 e.schedule.start = e.start;
                 e.schedule.end = e.end;
                 console.log('Line 101 e.start(): ', e);
@@ -132,7 +134,7 @@ for (let project_id in projects) {
             }
             savable();
         },
-        'beforeDeleteSchedule': function (e) {
+        'beforeDeleteSchedule': function(e) {
             // cancel updates of this schedule (so that it's not recreated when immediately deleted)
             changes["created"] = changes["created"].filter(change => change.id !== e.schedule.id);
             ScheduleList = ScheduleList.filter(schedule => schedule.id != e.schedule.id);
@@ -142,12 +144,12 @@ for (let project_id in projects) {
             person_count(e.schedule.title, -getNumWorkDays(e.schedule.start, e.schedule.end));// recount days
             savable();
         },
-        'afterRenderSchedule': function (e) {
+        'afterRenderSchedule': function(e) {
             let schedule = e.schedule;
             // var element = cal.getElement(schedule.id, schedule.calendarId);
             // console.log('afterRenderSchedule', element);
         },
-        'clickTimezonesCollapseBtn': function (timezonesCollapsed) {
+        'clickTimezonesCollapseBtn': function(timezonesCollapsed) {
             console.log('timezonesCollapsed', timezonesCollapsed);
 
             if (timezonesCollapsed) {
@@ -167,7 +169,7 @@ for (let project_id in projects) {
     });
 
     let dirty = false;
-    $(".save-button").click(function () {
+    $(".save-button").click(function() {
         $(".save-button").prop("disabled", true);
 
         // assure ICS date – my UTC server got 22:00 instead of 00:00, stripped the time and shifted the schedule date
@@ -205,7 +207,7 @@ for (let project_id in projects) {
         dirty = true;
     }
 
-    window.onbeforeunload = function () {
+    window.onbeforeunload = function() {
         if (dirty) {
             return "Unsaved changes. Are you sure?";
         }
@@ -216,13 +218,16 @@ for (let project_id in projects) {
         var html = [];
         for (let [project_id, project] of Object.entries(projects)) {
             if (project_id === CalendarList.checkedId) {
-                for (let [person, count] of Object.entries(project)) {
-                    let c  = count > 0?("+"+count):"← suggested";
-                    let style = count > 0?"":" class=suggested";
+                for (let [name, person] of Object.entries(project)) {
+                    const score = person.score
+                    let c = score > 0 ? ("+" + Math.round(score)) : "← suggested";
+                    let style = score > 0 ? "" : " class=suggested";
                     html.push(`<label${style}>
-                        <input name="person" type="radio" value="${person}" checked>
+                        <input name="person" type="radio" value="${name}" ${style?"checked":""}>
                         <span></span>
-                        <strong>${person} <span class="count">${c}</span></strong>
+                        <strong>
+                            ${name} <span class="count" data-count="${score}" data-coefficient="${person.coefficient}">${c}</span>
+                        </strong>
                     </label>
                     <br />`);
                 }
@@ -235,13 +240,13 @@ for (let project_id in projects) {
     function refreshScheduleVisibility() {
         var calendarElements = Array.prototype.slice.call(document.querySelectorAll('#calendarList input'));
 
-        CalendarList.forEach(function (calendar) {
+        CalendarList.forEach(function(calendar) {
             cal.toggleSchedules(calendar.id, !calendar.checked, false);
         });
 
         cal.render(true);
 
-        calendarElements.forEach(function (input) {
+        calendarElements.forEach(function(input) {
             var span = input.nextElementSibling;
             span.style.backgroundColor = input.checked ? span.style.borderColor : 'transparent';
         });
@@ -274,7 +279,7 @@ for (let project_id in projects) {
     }
 
     function setEventListener() {
-        $('#menu-navi').on('click', function (e) {
+        $('#menu-navi').on('click', function(e) {
             var action = getDataAction(e.target);
             switch (action) {
                 case 'move-prev':
@@ -293,10 +298,10 @@ for (let project_id in projects) {
             setSchedules();
         });
         //$('.dropdown-menu a[role="menuitem"]').on('click', onClickMenu);
-        $('#lnb-calendars #calendarList').on('change', function (e) {
+        $('#lnb-calendars #calendarList').on('change', function(e) {
             CalendarList.checkedId = e.target.value;
             let calendarElements = Array.prototype.slice.call(document.querySelectorAll('#calendarList input'));
-            calendarElements.forEach(function (input) {
+            calendarElements.forEach(function(input) {
                 if (input.value !== CalendarList.checkedId) {
                     input.checked = false;
                 }
@@ -305,7 +310,7 @@ for (let project_id in projects) {
             refreshScheduleVisibility();
         });
 
-        $('#dropdownMenu-calendars-list').on('click', function (e) {
+        $('#dropdownMenu-calendars-list').on('click', function(e) {
             var target = $(e.target).closest('a[role="menuitem"]')[0];
             var calendarId = getDataAction(target);
             var calendarNameElement = document.getElementById('calendarName');
@@ -327,7 +332,7 @@ for (let project_id in projects) {
         return target.dataset ? target.dataset.action : target.getAttribute('data-action');
     }
 
-    resizeThrottled = tui.util.throttle(function () {
+    resizeThrottled = tui.util.throttle(function() {
         cal.render();
     }, 50);
 
@@ -344,12 +349,12 @@ for (let project_id in projects) {
 })(window, tui.Calendar);
 
 // set calendars
-(function () {
+(function() {
 
     var calendarList = document.getElementById('calendarList');
     var html = [];
 
-    CalendarList.forEach(function (calendar) {
+    CalendarList.forEach(function(calendar) {
         console.log('Line 298 CalendarList.checkedId(): ', CalendarList.checkedId === calendar.id);
 
         html.push('<div class="lnb-calendars-item"><label>' +

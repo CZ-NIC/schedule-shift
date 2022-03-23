@@ -76,15 +76,13 @@ def project_and_name(event):
 
 iEvent.project_and_name = project_and_name
 
-
 @app.route("/")
 def homepage():
-    calendar = Config.calendar()
     schedules = []
     projects = Config.projects
     Config.reset_projects()
 
-    for event in caldav2events(calendar.events()):
+    for event in caldav2events(Config.get_events()):
         project, name = event.project_and_name()  # parse out the member name
         if project:
             # count number of working days
@@ -93,13 +91,9 @@ def homepage():
             dates = rrule.rruleset()
             dates.rrule(rrule.rrule(rrule.DAILY, dtstart=event["dtstart"].dt, until=(event["dtend"].dt - timedelta(1))))
             dates.exrule(rrule.rrule(rrule.DAILY, byweekday=(rrule.SA, rrule.SU), dtstart=event["dtstart"].dt))
-            projects[project][name] += dates.count()
+            projects[project][name].score += dates.count() * projects[project][name].coefficient
 
-            print(str(event["uid"]), str(event["dtstart"].dt), str(event["dtend"].dt))
-            #if event["uid"] == "d0b2edae-f15d-541b-982b-e5b66d5751f9":
-            # if event["uid"] == "3943-5C990600-2F-13558D40":
-            #     import ipdb;
-            #     ipdb.set_trace()
+            # print(str(event["uid"]), str(event["dtstart"].dt), str(event["dtend"].dt))
 
             schedules.append({
                 "id": str(event["uid"]),
@@ -111,14 +105,14 @@ def homepage():
                 "end": str(event["dtend"].dt - timedelta(1))  # see above: different DTEND formats
             })
 
-    # modify projects so that we see relative number of worked out days (to see who should take the shift)
     for project in projects.values():
-        print(min(project, key=project.get), project[min(project, key=project.get)])
-        m = project[min(project, key=project.get)]
+        m = min(x.score for x in project.values())
         for member in project:
-            project[member] -= m
+            project[member].score -= m
 
-    return render_template('calendar.html', projects=json.loads(json.dumps(projects)), schedules=schedules)
+    return render_template('calendar.html',
+                           projects=json.loads(json.dumps(projects, default=lambda x: x.__dict__)),
+                           schedules=schedules)
 
 
 @app.route("/change", methods=['POST'])
@@ -129,9 +123,21 @@ def change():
     for uid in changes["deleted"]:
         try:
             calendar.event_by_uid(uid).delete()
+            print("Deleted:", uid)
         except caldav.lib.error.NotFoundError:
+            # as of 2022-03-23 I was unable to use event_by_uid due to an AuthorizationError.
+            # But searching whole calendar for the event still works.
+            # This painful piece of code compares events data for UID
+            # and then uses its original reference to be deleted.
+            # In the future, calendar.event_by_uid might start working again
+            # (see the logs for "Deleted" keyword) and this can be trashed.
+            events = Config.get_events()
+            for ref, ev in zip(events, caldav2events(events)):
+                if ev["uid"] == uid:
+                    ref.delete()
+                    print("Deleted the hard way:", uid)
+                    break
             # the event haven't been in the calendar, maybe was just created and deleted
-            pass
 
     for schedule in changes["created"]:
         c = iCalendar()
@@ -155,14 +161,15 @@ def change():
     return "Saved"
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Schedule shift via nice GUI to a SOGO calendar", formatter_class=argparse.RawTextHelpFormatter)
-    #parser.add_argument('-v', '--verbose', action='store_true', help="Print out the mail contents.")
+def cli():
+    parser = argparse.ArgumentParser(description="Schedule shift via nice GUI to a SOGO calendar",
+                                     formatter_class=argparse.RawTextHelpFormatter)
+    # parser.add_argument('-v', '--verbose', action='store_true', help="Print out the mail contents.")
     parser.add_argument('--send', action='store_true', help="Send e-mails. (By default, no mails are sent.)")
-    parser.add_argument('notify',  help=__help__, nargs='+')
+    parser.add_argument('notify', help=__help__, nargs='+')
     args = parser.parse_args()
 
-    Config.verbose = True # args.verbose
+    Config.verbose = True  # args.verbose
 
     if sys.argv[1] == "notify":
         today = datetime.today().date()
@@ -172,7 +179,8 @@ if __name__ == "__main__":
             logging.error(f"Invalid schema: {today}")
             exit(1)
 
-        defaults = ["all", "any", "owner", None]  # default instructions values - all projects, any state, inform owner, no fallback
+        # default instructions values - all projects, any state, inform owner, no fallback
+        defaults = ["all", "any", "owner", None]
         instructions = []
         # we expand 'all' projects to the real project names
         for p in " ".join(args.notify[1:]).split(","):
@@ -243,3 +251,7 @@ if __name__ == "__main__":
         Notification.send(args.send)
     else:
         print(__help__)
+
+
+if __name__ == "__main__":
+    cli()

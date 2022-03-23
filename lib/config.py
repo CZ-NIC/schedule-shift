@@ -1,8 +1,10 @@
 import configparser
 import os
+from dataclasses import dataclass
 from os import path
 
 import caldav
+import dateutil
 from caldav import Calendar
 
 config = configparser.ConfigParser()
@@ -10,6 +12,12 @@ config.optionxform = str  # dont lowercase
 
 os.chdir(path.join(path.dirname(path.realpath(__file__)), ".."))
 config.read("config.ini")
+
+
+@dataclass
+class Member:
+    score: float = 0
+    coefficient: float = 0
 
 
 class Config:
@@ -22,7 +30,15 @@ class Config:
     @classmethod
     def reset_projects(cls):
         for project, members in config.items("projects"):
-            cls.projects[project] = {k.strip(): 0 for k in members.split(",")}
+            cls.projects[project] = {}
+            members = [k.strip() for k in members.split(",")]
+            for member in members:
+                try:
+                    bonus, coefficient = (float(x) for x in Config.config.get(f"projects.{project}", member).split(","))
+                except configparser.Error:
+                    bonus, coefficient = 0, 1
+
+                cls.projects[project][member] = Member(bonus, coefficient)
 
     @staticmethod
     def calendar():
@@ -31,6 +47,14 @@ class Config:
         password = config.get("general", "calendar_password")
         client = caldav.DAVClient(url, username=username, password=password)
         return Calendar(client, url)
+
+    @classmethod
+    def get_events(cls):
+        calendar = cls.calendar()
+        date = cls.config.get("general", "start_date")
+        if date:
+            return calendar.date_search(dateutil.parser.parse(date))
+        return calendar.events()
 
     @classmethod
     def get_mail(cls, name):

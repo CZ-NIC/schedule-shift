@@ -5,3 +5,4 @@ Ex: days 2019-03-02 and 2019-03-03 in SoGo 2019-03-02 – 04, in Tui.Calendar 20
 * Recounting days on client
 * changing months before save
 * hiding Edit button on event-click popup
+* start date, initial values
