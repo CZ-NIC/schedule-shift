@@ -105,6 +105,7 @@ def homepage():
                 "end": str(event["dtend"].dt - timedelta(1))  # see above: different DTEND formats
             })
 
+    # modify projects so that we see relative number of worked out days (to see who should take the shift)
     for project in projects.values():
         m = min(x.score for x in project.values())
         for member in project:
