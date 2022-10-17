@@ -5,9 +5,9 @@ from email.mime.text import MIMEText
 from email.utils import make_msgid, formatdate
 from typing import Dict, Any
 
+from envelope import Envelope
+
 from lib.config import Config
-
-
 
 
 class Notification:
@@ -44,23 +44,20 @@ class Notification:
         if self.subject:
             subject += " (" + ",".join(self.subject) + ")"
 
-        text = "<br>\r\n".join(self.text) + "<br>\r\n<br>\r\n" + f"Wanna plan <a href='{Config.config.get('general','application_url')}'>a shift</a>?"
+        text = "<br>\r\n".join(self.text) + "<br>\r\n<br>\r\n" + \
+            f"Wanna plan <a href='{Config.config.get('general','application_url')}'>a shift</a>?"
 
-        email_from = Config.config.get("general", "email_from")
-        msg = MIMEText(text, "html", "utf-8")
-        msg["From"] = email_from
-        msg["Subject"] = subject
-        msg["To"] = self.email_to
-        msg["Date"] = formatdate(localtime=True)
-        msg["Message-ID"] = make_msgid()
+        e = (Envelope().from_(Config.config.get("general", "email_from"))
+                       .to(self.email_to)
+                       .subject(subject)
+                       .message(text)
+                       .smtp(self.smtp))
 
         if send:
-            self.smtp.sendmail(email_from, self.email_to , msg.as_string().encode('ascii'))
+            e.send()
             pass
-        if Config.verbose: # not send
-            msg.set_payload("")
-            print("\n----------------\n\n", msg, text)
-
+        if Config.verbose:  # not send
+            print("\n----------------\n\n", e.preview())
 
     @classmethod
     def send(cls, send=True):
