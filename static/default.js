@@ -218,14 +218,18 @@ for (let project_id in projects) {
         var html = [];
         for (let [project_id, project] of Object.entries(projects)) {
             if (project_id === CalendarList.checkedId) {
+                const minimal_score = Math.min(...Object.values(project).map(({score})=> score))
+                console.log("hej", minimal_score, Object.values(project), Object.values(project).map(({score})=> score))
                 for (let [name, person] of Object.entries(project)) {
                     const score = person.score
+
                     let c = score > 0 ? ("+" + Math.round(score)) : "← suggested";
                     let style = score > 0 ? "" : " class=suggested";
+                    
                     html.push(`<label${style}>
                         <input name="person" type="radio" value="${name}" ${style?"checked":""}>
                         <span></span>
-                        <strong>
+                        <strong title="personal balance: ${Math.round(person.balance)} days">
                             ${name} <span class="count" data-count="${score}" data-coefficient="${person.coefficient}">${c}</span>
                         </strong>
                     </label>

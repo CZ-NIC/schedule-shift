@@ -16,8 +16,9 @@ config.read("config.ini")
 
 @dataclass
 class Member:
-    score: float = 0
-    coefficient: float = 0
+    score: float = 0  # how many days the worker is in the advantage
+    coefficient: float = 0  # 1 = full-time, < 1 part-time, > 1 longer work load job
+    balance: float = 0  # personal balance, how many days more/less should the worker do
 
 
 class Config:
@@ -25,7 +26,7 @@ class Config:
     config = config
 
     # read projects
-    projects = {}  # {"project": {"member1": 0, ...}, ... }
+    projects : dict[str, dict[str, Member]] = {}  # {"project": {"member1": 0, ...}, ... }
 
     @classmethod
     def reset_projects(cls):

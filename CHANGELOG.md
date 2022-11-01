@@ -2,6 +2,7 @@
 
 ## unreleased
 * start date, initial values
+* personal balance
 
 ## 0.3 (2019-11-08)
 * date ending formats

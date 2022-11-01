@@ -5,6 +5,7 @@ import logging
 import re
 import sys
 from datetime import timedelta, datetime
+from typing import Dict
 
 import caldav
 from dateutil import rrule
@@ -13,7 +14,7 @@ from flask import Flask, render_template, request
 from icalendar import Calendar as iCalendar, Event as iEvent
 from requests.exceptions import InvalidSchema
 
-from lib.config import Config
+from lib.config import Config, Member
 from lib.notification import Notification
 
 __help__ = """[project_name] [shift state] [whom to write] [fallback e-mail], ...
@@ -52,7 +53,8 @@ Examples – send the notification:
 """
 
 app = Flask("shift-schedule")
-e_mail_regex = re.compile('^[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,4})$')
+e_mail_regex = re.compile(
+    '^[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,4})$')
 
 
 def caldav2events(caldav_events):
@@ -71,15 +73,18 @@ def project_and_name(event):
             return project, name
     except ValueError:
         pass
-    return None, event["summary"]  # this event is not part of any here-defined project
+    # this event is not part of any here-defined project
+    return None, event["summary"]
 
 
 iEvent.project_and_name = project_and_name
+
 
 @app.route("/")
 def homepage():
     schedules = []
     projects = Config.projects
+
     Config.reset_projects()
 
     for event in caldav2events(Config.get_events()):
@@ -89,9 +94,12 @@ def homepage():
             # Different DTEND formats: We have to shorten the end date:
             # Ex: days 2019-03-02 and 2019-03-03 in SoGo 2019-03-02 – 04, in Tui.Calendar 2019-03-02 – 03
             dates = rrule.rruleset()
-            dates.rrule(rrule.rrule(rrule.DAILY, dtstart=event["dtstart"].dt, until=(event["dtend"].dt - timedelta(1))))
-            dates.exrule(rrule.rrule(rrule.DAILY, byweekday=(rrule.SA, rrule.SU), dtstart=event["dtstart"].dt))
-            projects[project][name].score += dates.count() * projects[project][name].coefficient
+            dates.rrule(rrule.rrule(rrule.DAILY, dtstart=event["dtstart"].dt, until=(
+                event["dtend"].dt - timedelta(1))))
+            dates.exrule(rrule.rrule(rrule.DAILY, byweekday=(
+                rrule.SA, rrule.SU), dtstart=event["dtstart"].dt))
+            projects[project][name].score += dates.count() * \
+                projects[project][name].coefficient
 
             # print(str(event["uid"]), str(event["dtstart"].dt), str(event["dtend"].dt))
 
@@ -102,17 +110,22 @@ def homepage():
                 "title": str(name),
                 "category": 'time',
                 "start": str(event["dtstart"].dt),
-                "end": str(event["dtend"].dt - timedelta(1))  # see above: different DTEND formats
+                # see above: different DTEND formats
+                "end": str(event["dtend"].dt - timedelta(1))
             })
 
     # modify projects so that we see relative number of worked out days (to see who should take the shift)
     for project in projects.values():
-        m = min(x.score for x in project.values())
-        for member in project:
-            project[member].score -= m
+        members = project.values()
+        m = min(x.score for x in members)
+        balance = sum(x.score for x in members) / len(members)
+        for member in members:
+            member.balance = member.score - balance
+            member.score -= m
 
     return render_template('calendar.html',
-                           projects=json.loads(json.dumps(projects, default=lambda x: x.__dict__)),
+                           projects=json.loads(json.dumps(
+                               projects, default=lambda x: x.__dict__)),
                            schedules=schedules)
 
 
@@ -166,7 +179,8 @@ def cli():
     parser = argparse.ArgumentParser(description="Schedule shift via nice GUI to a SOGO calendar",
                                      formatter_class=argparse.RawTextHelpFormatter)
     # parser.add_argument('-v', '--verbose', action='store_true', help="Print out the mail contents.")
-    parser.add_argument('--send', action='store_true', help="Send e-mails. (By default, no mails are sent.)")
+    parser.add_argument('--send', action='store_true',
+                        help="Send e-mails. (By default, no mails are sent.)")
     parser.add_argument('notify', help=__help__, nargs='+')
     args = parser.parse_args()
 
@@ -175,7 +189,8 @@ def cli():
     if sys.argv[1] == "notify":
         today = datetime.today().date()
         try:
-            events = list(caldav2events(Config.calendar().date_search(today, today)))
+            events = list(caldav2events(
+                Config.calendar().date_search(today, today)))
         except InvalidSchema:
             logging.error(f"Invalid schema: {today}")
             exit(1)
@@ -196,13 +211,16 @@ def cli():
         for project, state, who, fallback in instructions:
             # argument checks
             if project not in Config.projects:
-                logging.error(f"Invalid project name {project}: {project} {state} {who}")
+                logging.error(
+                    f"Invalid project name {project}: {project} {state} {who}")
                 continue
             if who not in ['owner', 'all'] and not e_mail_regex.match(who):
-                logging.error(f"Invalid who parameter {who}: {project} {state} {who}")
+                logging.error(
+                    f"Invalid who parameter {who}: {project} {state} {who}")
                 continue
             if state not in ["any", "starting", "proceeding", "ending", "none"]:
-                logging.error(f"Invalid state parameter {state}: {project} {state} {who}")
+                logging.error(
+                    f"Invalid state parameter {state}: {project} {state} {who}")
                 continue
 
             # searching for an event related to this project
@@ -248,7 +266,8 @@ def cli():
                     fallback = "all" if who in ["owner", "all"] else who
                 if fallback == "all":
                     fallback = Config.get_member_mails(project)
-                Notification.add(fallback, f"{project} has no registered shift!", highlight=project)
+                Notification.add(
+                    fallback, f"{project} has no registered shift!", highlight=project)
         Notification.send(args.send)
     else:
         print(__help__)
