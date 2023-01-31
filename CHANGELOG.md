@@ -3,6 +3,7 @@
 ## unreleased
 * start date, initial values
 * personal balance
+* api to display today's masters
 
 ## 0.3 (2019-11-08)
 * date ending formats

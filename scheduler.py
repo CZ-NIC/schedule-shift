@@ -6,6 +6,7 @@ import re
 import sys
 from datetime import timedelta, datetime
 from typing import Dict
+from sys import exit
 
 import caldav
 from dateutil import rrule
@@ -20,41 +21,45 @@ from lib.notification import Notification
 __help__ = """[project_name] [shift state] [whom to write] [fallback e-mail], ...
 project_name:
     'all' (default) to match all of the defined project.
-    
-shift state:        
+
+shift state:
     any - (default) Any state, doesn't matter whether it's starting, ending or if nobody has it.
     starting - When this is the first day of a new shift.
     proceeding - When we are in the middle of a shift.
     ending - When this is the last day of a shift.
-    none - Send the notification only when nobody's got the shift planned.         
-    
+    none - Send the notification only when nobody's got the shift planned.
+
 whom to write:
-    owner - (default) Send the notification to the shift owner only if set or to all members if nobody's got the shift.        
+    owner - (default) Send the notification to the shift owner only if set or to all members if nobody's got the shift.
     all - All members of a project.
     e-mail - Use this custom e-mail to notify.
-    
+
 fallback e-mail:
     Can be set to an e-mail that gets notified when nobody's got their shift planned.
     If not set, we notify the e-mail specified in 'who' parameter or all project members (if 'who' is set to 'owner' or 'all').
     If set to 'mute', nobody'll be notified.
-    
-If --send flag is not present, no e-mails are sent.  
 
-Examples – send the notification: 
-     to all members of project my_project:        
+If --send flag is not present, no e-mails are sent.
+
+Examples – send the notification:
+     to all members of project my_project:
         ./scheduler.py notify my_project any all
     to all members of project my_project and of another_project when anybody shift's ending:
         ./scheduler.py notify my_project ending all, another_project ending all
-    to the shift owner if the shift is starting but don't send info if no shift is taken    
+    to the shift owner if the shift is starting but don't send info if no shift is taken
         ./scheduler.py notify my_project starting owner mute
-    to an e-mail when this is the last day of a shift on any project    
+    to an e-mail when this is the last day of a shift on any project
         ./scheduler.py notify all ending example@example.com
-         
+
 """
 
 app = Flask("shift-schedule")
 e_mail_regex = re.compile(
     '^[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,4})$')
+
+
+def today():
+    return datetime.today().date()
 
 
 def caldav2events(caldav_events):
@@ -80,8 +85,7 @@ def project_and_name(event):
 iEvent.project_and_name = project_and_name
 
 
-@app.route("/")
-def homepage():
+def info():
     schedules = []
     projects = Config.projects
 
@@ -122,12 +126,25 @@ def homepage():
         for member in members:
             member.balance = member.score - balance
             member.score -= m
+    return projects, schedules
 
+
+@app.route("/")
+def homepage():
+    projects, schedules = info()
     return render_template('calendar.html',
                            projects=json.loads(json.dumps(
                                projects, default=lambda x: x.__dict__)),
                            schedules=schedules)
 
+@app.route("/api/")
+def api_help():
+    return '<a href="today">today</a> – JSON {project: today\'s name}'
+
+@app.route("/api/today")
+def api_today():
+    return {p_n[0]: p_n[1] for event in get_events()
+            if (p_n := event.project_and_name())}
 
 @app.route("/change", methods=['POST'])
 def change():
@@ -175,6 +192,16 @@ def change():
     return "Saved"
 
 
+def get_events():
+    try:
+        events = list(caldav2events(
+            Config.calendar().date_search(today(), today())))
+    except InvalidSchema:
+        logging.error(f"Invalid schema: {today()}")
+        exit(1)
+    return events
+
+
 def cli():
     parser = argparse.ArgumentParser(description="Schedule shift via nice GUI to a SOGO calendar",
                                      formatter_class=argparse.RawTextHelpFormatter)
@@ -187,13 +214,7 @@ def cli():
     Config.verbose = True  # args.verbose
 
     if sys.argv[1] == "notify":
-        today = datetime.today().date()
-        try:
-            events = list(caldav2events(
-                Config.calendar().date_search(today, today)))
-        except InvalidSchema:
-            logging.error(f"Invalid schema: {today}")
-            exit(1)
+        events = get_events()
 
         # default instructions values - all projects, any state, inform owner, no fallback
         defaults = ["all", "any", "owner", None]
@@ -238,11 +259,11 @@ def cli():
                     if type(ending) is datetime:
                         ending = ending.date()
 
-                    if state in ["any", "starting"] and today == starting:
+                    if state in ["any", "starting"] and today() == starting:
                         status = f"starting (ending on {ending.isoformat()})"
-                    elif state in ["any", "ending"] and today == ending:
+                    elif state in ["any", "ending"] and today() == ending:
                         status = "ending"
-                    elif state in ["any", "proceeding"] and today not in [starting, ending]:
+                    elif state in ["any", "proceeding"] and today() not in [starting, ending]:
                         status = f"proceeding (ending on {ending.isoformat()})"
                     else:
                         continue
