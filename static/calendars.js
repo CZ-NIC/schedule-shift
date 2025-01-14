@@ -1,7 +1,5 @@
 'use strict';
 
-/* eslint-disable require-jsdoc, no-unused-vars */
-
 var CalendarList = [];
 
 let colors = ['#9e5fff', '#00a9ff']
@@ -22,7 +20,7 @@ function addCalendar(calendar) {
 function findCalendar(id) {
     var found;
 
-    CalendarList.forEach(function(calendar) {
+    CalendarList.forEach(function (calendar) {
         if (calendar.id === id) {
             found = calendar;
         }

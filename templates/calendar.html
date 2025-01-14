@@ -1,40 +1,43 @@
 <!doctype html>
 <html lang="en">
+
 <head>
     <meta http-equiv="content-type" content="text/html; charset=utf-8">
-    <title>Calendar DEMO</title>
+    <title>Čertí služby</title>
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/css/bootstrap.min.css">
     <link rel="stylesheet" type="text/css" href="https://uicdn.toast.com/tui.time-picker/latest/tui-time-picker.css">
     <link rel="stylesheet" type="text/css" href="https://uicdn.toast.com/tui.date-picker/latest/tui-date-picker.css">
-    <link rel="stylesheet" type="text/css" href="/static/tui.calendar/tui-calendar.css"/>
-    <link rel="stylesheet" type="text/css" href="/static/default.css"/>
-    <link rel="stylesheet" type="text/css" href="/static/icons.css"/>
+    <link rel="stylesheet" type="text/css" href="/static/tui.calendar/tui-calendar.css" />
+    <link rel="stylesheet" type="text/css" href="/static/default.css" />
+    <link rel="stylesheet" type="text/css" href="/static/icons.css" />
 </head>
+
 <body>
-<div id="lnb">
-    <div id="lnb-calendars" class="lnb-calendars">
-        <div>
-            <b>Who's in the lead?</b>
-            <div class="lnb-calendars-item">
-                <label>
-                    <input name="person" class="tui-full-calendar-checkbox-square" type="radio" value="..." checked>
-                    <span></span>
-                    <strong>...</strong>
-                </label>
+    <div id="lnb">
+        <div id="lnb-calendars" class="lnb-calendars">
+            <div>
+                <b>Who's in the lead?</b>
+                <div class="lnb-calendars-item">
+                    <label>
+                        <input name="person" class="tui-full-calendar-checkbox-square" type="radio" value="..." checked>
+                        <span></span>
+                        <strong>...</strong>
+                    </label>
+                </div>
+            </div>
+            <div id="calendarList" class="lnb-calendars-d1">
             </div>
         </div>
-        <div id="calendarList" class="lnb-calendars-d1">
+        <div class="lnb-footer">
+            © NHN Entertainment Corp.
         </div>
     </div>
-    <div class="lnb-footer">
-        © NHN Entertainment Corp.
-    </div>
-</div>
-<div id="right">
-    <div id="menu">
+    <div id="right">
+        <div id="menu">
 
             <span id="menu-navi">
-                <button type="button" class="btn btn-default btn-sm save-button" data-action="save" disabled>Save</button>
+                <button type="button" class="btn btn-default btn-sm save-button" data-action="save"
+                    disabled>Save</button>
                 <button type="button" class="btn btn-default btn-sm move-today" data-action="move-today">Today</button>
                 <button type="button" class="btn btn-default btn-sm move-day" data-action="move-prev">
                     <i class="calendar-icon ic-arrow-line-left" data-action="move-prev"></i>
@@ -43,27 +46,30 @@
                     <i class="calendar-icon ic-arrow-line-right" data-action="move-next"></i>
                 </button>
             </span>
-        <span id="renderRange" class="render-range"></span>
+            <span id="renderRange" class="render-range"></span>
+        </div>
+        <div id="calendar"></div>
     </div>
-    <div id="calendar"></div>
-</div>
 
-<script src="https://code.jquery.com/jquery-3.3.1.min.js" integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=" crossorigin="anonymous"></script>
-<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/js/bootstrap.min.js"></script>
-<script type="text/javascript" src="https://uicdn.toast.com/tui.code-snippet/latest/tui-code-snippet.min.js"></script>
-<script type="text/javascript" src="https://uicdn.toast.com/tui.time-picker/latest/tui-time-picker.min.js"></script>
-<script type="text/javascript" src="https://uicdn.toast.com/tui.date-picker/latest/tui-date-picker.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.20.1/moment.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/chance/1.0.13/chance.min.js"></script>
-<script src="/static/tui.calendar/tui-calendar.js"></script>
-<script src="/static/calendars.js"></script>
-<script src="/static/schedules.js"></script>
-<script src="/static/dooray.js"></script>
-<script>
-    var projects = {{ projects | safe }};
-    var ScheduleList = {{ schedules | safe}};
-    //{"Root": {"Edvard": 3, "Petr": 2}, "Csirtmaster": {"Edvard": 1, "Petr": 4}};
-</script>
-<script src="/static/default.js"></script>
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js"
+        integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=" crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/js/bootstrap.min.js"></script>
+    <script type="text/javascript"
+        src="https://uicdn.toast.com/tui.code-snippet/latest/tui-code-snippet.min.js"></script>
+    <script type="text/javascript" src="https://uicdn.toast.com/tui.time-picker/latest/tui-time-picker.min.js"></script>
+    <script type="text/javascript" src="https://uicdn.toast.com/tui.date-picker/latest/tui-date-picker.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.20.1/moment.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chance/1.0.13/chance.min.js"></script>
+    <script src="/static/tui.calendar/tui-calendar.js"></script>
+    <script src="/static/calendars.js"></script>
+    <script src="/static/schedules.js"></script>
+    <script src="/static/dooray.js"></script>
+    <script>
+        var projects = {{ projects | safe }};
+        var ScheduleList = {{ schedules | safe}};
+        //{"Root": {"Edvard": 3, "Petr": 2}, "Csirtmaster": {"Edvard": 1, "Petr": 4}};
+    </script>
+    <script src="/static/default.js"></script>
 </body>
+
 </html>
