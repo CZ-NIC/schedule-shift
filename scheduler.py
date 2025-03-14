@@ -55,7 +55,7 @@ Examples – send the notification:
 
 app = Flask("shift-schedule")
 e_mail_regex = re.compile(
-    '^[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,4})$')
+    r'^[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,4})$')
 
 
 def today():
