@@ -4,3 +4,4 @@ flask
 icalendar
 python-dateutil
 requests
+mininterface[basic]

@@ -1,0 +1,20 @@
+smtp_server: localhost
+email_from:
+calendar_url:
+calendar_username:
+calendar_password:
+application_url:
+start_date:
+team:
+    John Smith: john.smith@example.com
+    Peter:
+    Laura:
+projects:
+    First project:
+        members:
+            - John Smith
+            - Laura
+    Second project:
+        members:
+            - Laura
+            - Peter

@@ -5,7 +5,6 @@ import logging
 import re
 import sys
 from datetime import timedelta, datetime
-from typing import Dict
 from sys import exit
 
 import caldav
@@ -15,7 +14,7 @@ from flask import Flask, render_template, request
 from icalendar import Calendar as iCalendar, Event as iEvent
 from requests.exceptions import InvalidSchema
 
-from lib.config import Config, Member
+from lib.config import Config
 from lib.notification import Notification
 
 __help__ = """[project_name] [shift state] [whom to write] [fallback e-mail], ...
@@ -56,7 +55,7 @@ Examples – send the notification:
 app = Flask("shift-schedule")
 e_mail_regex = re.compile(
     r'^[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,4})$')
-
+config = Config()
 
 def today():
     return datetime.today().date()
@@ -74,7 +73,7 @@ def caldav2events(caldav_events):
 def project_and_name(event):
     try:
         project, name = event["summary"].split(" ", 1)
-        if project in Config.projects:
+        if project in config.projects:
             return project, name
     except ValueError:
         pass
@@ -82,17 +81,13 @@ def project_and_name(event):
     return None, event["summary"]
 
 
-iEvent.project_and_name = project_and_name
-
-
 def info():
     schedules = []
-    projects = Config.projects
+    projects = config.projects
 
-    Config.reset_projects()
+    for event in caldav2events(config.get_events()):
+        project, name = project_and_name(event)  # parse out the member name
 
-    for event in caldav2events(Config.get_events()):
-        project, name = event.project_and_name()  # parse out the member name
         if project:
             # count number of working days
             # Different DTEND formats: We have to shorten the end date:
@@ -119,10 +114,11 @@ def info():
             })
 
     # modify projects so that we see relative number of worked out days (to see who should take the shift)
-    for project in projects.values():
+    for pr_name, project in projects.items():
         members = project.values()
         m = min(x.score for x in members)
         balance = sum(x.score for x in members) / len(members)
+        balance = balance - config.env.projects[pr_name].get("balance_delta",0)
         for member in members:
             member.balance = member.score - balance
             member.score -= m
@@ -144,12 +140,12 @@ def api_help():
 @app.route("/api/today")
 def api_today():
     return {p_n[0]: p_n[1] for event in get_events()
-            if (p_n := event.project_and_name())}
+            if (p_n := project_and_name(event))}
 
 @app.route("/change", methods=['POST'])
 def change():
     """ Change (create) or delete an event by POST request """
-    calendar = Config.calendar()
+    calendar = config.calendar()
     changes = request.get_json()
     for uid in changes["deleted"]:
         try:
@@ -162,7 +158,7 @@ def change():
             # and then uses its original reference to be deleted.
             # In the future, calendar.event_by_uid might start working again
             # (see the logs for "Deleted" keyword) and this can be trashed.
-            events = Config.get_events()
+            events = config.get_events()
             for ref, ev in zip(events, caldav2events(events)):
                 if ev["uid"] == uid:
                     ref.delete()
@@ -195,7 +191,7 @@ def change():
 def get_events():
     try:
         events = list(caldav2events(
-            Config.calendar().date_search(today(), today())))
+            Config().calendar().date_search(today(), today())))
     except InvalidSchema:
         logging.error(f"Invalid schema: {today()}")
         exit(1)
@@ -211,7 +207,7 @@ def cli():
     parser.add_argument('notify', help=__help__, nargs='+')
     args = parser.parse_args()
 
-    Config.verbose = True  # args.verbose
+    Config().verbose = True  # args.verbose
 
     if sys.argv[1] == "notify":
         events = get_events()
@@ -224,14 +220,14 @@ def cli():
             pp = p.strip().split(" ")
             i = pp + defaults[len(pp):]
             if i[0] in ["all", ""]:
-                for pr in Config.projects:
+                for pr in config.projects:
                     instructions.append((pr, *i[1:]))
             else:
                 instructions.append(i)
 
         for project, state, who, fallback in instructions:
             # argument checks
-            if project not in Config.projects:
+            if project not in config.projects:
                 logging.error(
                     f"Invalid project name {project}: {project} {state} {who}")
                 continue
@@ -247,7 +243,7 @@ def cli():
             # searching for an event related to this project
             found = False
             for event in events:
-                project_e, name = event.project_and_name()
+                project_e, name = project_and_name(event)
                 if project == project_e:
                     found = True
                     starting = event["dtstart"].dt
@@ -270,13 +266,13 @@ def cli():
 
                     highlight = None
                     if who == "owner":
-                        mail = Config.get_mail(name)
+                        mail = config.get_mail(name)
                         highlight = project
                     elif who == "all":
-                        mail = Config.get_member_mails(project)
+                        mail = config.get_member_mails(project)
                     else:
                         mail = who
-                        if mail == Config.get_mail(name):  # this is the owner
+                        if mail == config.get_mail(name):  # this is the owner
                             highlight = project
 
                     text = f"{project} – {name} – {status}"
@@ -286,7 +282,7 @@ def cli():
                 if not fallback:
                     fallback = "all" if who in ["owner", "all"] else who
                 if fallback == "all":
-                    fallback = Config.get_member_mails(project)
+                    fallback = config.get_member_mails(project)
                 Notification.add(
                     fallback, f"{project} has no registered shift!", highlight=project)
         Notification.send(args.send)

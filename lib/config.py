@@ -1,17 +1,48 @@
+from collections import defaultdict
 import configparser
+from datetime import date, datetime, time
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from os import path
+from typing import TypedDict
 
 import caldav
 import dateutil
 from caldav import Calendar
+from mininterface import run
 
-config = configparser.ConfigParser()
-config.optionxform = str  # dont lowercase
+Name = str
+Mail = str
 
-os.chdir(path.join(path.dirname(path.realpath(__file__)), ".."))
-config.read("config.ini")
+@dataclass
+class ProjectDict:
+    members: list[Name]
+    balance_bonus: dict[Name, int] = field(default_factory=dict)
+    balance_delta: int = 0
+    coefficient: dict[Name, int] = field(default_factory=dict)
+
+@dataclass
+class Env:
+    smtp_server: str
+    email_from: Mail
+    calendar_url: str
+    calendar_username: str
+    calendar_password: str
+    application_url: str
+    start_date: date
+    team: dict[Name, Mail]
+    projects: dict[str, dict]
+
+    def get_projects(self):
+        # NOTE if tyro supported `projects: dict[str, ProjectDict]`, this method could vanish
+        projects = defaultdict(dict)
+        for project, val in self.projects.items():
+            pd = ProjectDict(*val.values())
+            for member in pd.members:
+                projects[project][member] = Member(pd.balance_bonus.get(member, 0), pd.coefficient.get(member, 1))
+        return projects
+
+
 
 
 @dataclass
@@ -23,51 +54,31 @@ class Member:
 
 class Config:
     verbose = False
-    config = config
 
-    # read projects
-    projects : dict[str, dict[str, Member]] = {}  # {"project": {"member1": 0, ...}, ... }
+    def __init__(self):
+        m = run(Env, args=[], config_file="scheduler.yaml")
+        self.env = m.env
 
-    @classmethod
-    def reset_projects(cls):
-        for project, members in config.items("projects"):
-            cls.projects[project] = {}
-            members = [k.strip() for k in members.split(",")]
-            for member in members:
-                try:
-                    bonus, coefficient = (float(x) for x in Config.config.get(f"projects.{project}", member).split(","))
-                except configparser.Error:
-                    bonus, coefficient = 0, 1
+    @property
+    def projects(self)-> dict[str, dict[str, Member]]:
+        # {"project": {"member1": 0, ...}, ... }
+        return self.env.get_projects()
 
-                cls.projects[project][member] = Member(bonus, coefficient)
+    def calendar(self):
+        e = self.env
+        client = caldav.DAVClient(e.calendar_url, username=e.calendar_username, password=e.calendar_password)
+        return Calendar(client, e.calendar_url)
 
-    @staticmethod
-    def calendar():
-        url = config.get("general", "calendar_url")
-        username = config.get("general", "calendar_username")
-        password = config.get("general", "calendar_password")
-        client = caldav.DAVClient(url, username=username, password=password)
-        return Calendar(client, url)
-
-    @classmethod
-    def get_events(cls):
-        calendar = cls.calendar()
-        date = cls.config.get("general", "start_date")
+    def get_events(self):
+        calendar = self.calendar()
+        date = self.env.start_date
         if date:
-            return calendar.date_search(dateutil.parser.parse(date))
+            return calendar.date_search(date)
         return calendar.events()
 
-    @classmethod
-    def get_mail(cls, name):
-        try:
-            return config.get("team", name)
-        except KeyError:
-            return None
+    def get_mail(self, name):
+        return self.env.team.get(name, None)
 
-    @classmethod
-    def get_member_mails(cls, project):
-        for member in cls.projects[project]:
-            yield cls.get_mail(member)
-
-
-Config.reset_projects()
+    def get_member_mails(self, project):
+        for member in self.projects[project]:
+            yield self.get_mail(member)

@@ -1,6 +1,7 @@
 # CHANGELOG
 
-## unreleased
+## 0.4.0 (2025-09-30)
+* mininterface support
 * start date, initial values
 * personal balance
 * api to display today's masters

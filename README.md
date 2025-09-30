@@ -63,24 +63,14 @@ To an e-mail when this is the last day of a shift on any project
 ```
 git clone git@github.com:CZ-NIC/schedule-shift.git
 ```
-* Create `config.ini` from [`config.ini.default` file](config.ini.default), specify your teammates and assign them to the projects.
-```ini
-[team]
-John Smith = john.smith@example.com
-Peter =
-Laura =
-
-[projects]
-First project = John Smith, Laura
-Second project = Laura, Peter
-```
+* Create `scheduler.yaml` from [`scheduler.yaml.default` file](scheduler.yaml.default), specify your teammates and assign them to the projects.
 * Systemd configuration: Move `misc/schedule-shift.service` to `/etc/systemd/system/schedule-shift.service`
 * Nginx configuration file:
 
 ```nginx
 server {
     listen 7000;
-    server_name mdmaug.csirt.office.nic.cz;
+    server_name example.com;
 
     location / {
         include uwsgi_params;
@@ -99,8 +89,8 @@ systemctl enable schedule-shift
 ```
 * Put a cron so that your users will receive e-mails:
 ```cron
-30 5 * * 1-5 python3.6 /opt/schedule-shift/scheduler.py notify all starting --send
-0 6 * * Tue expr `date +\%W` \% 2 > /dev/null || python3.6 /opt/schedule-shift/scheduler.py notify all starting --send # notify every second Tuesday
+30 5 * * 1-5 python3 /opt/schedule-shift/scheduler.py notify all starting --send
+0 6 * * Tue expr `date +\%W` \% 2 > /dev/null || python3 /opt/schedule-shift/scheduler.py notify all starting --send # notify every second Tuesday
 ```
 
 
