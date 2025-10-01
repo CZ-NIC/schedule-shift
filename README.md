@@ -89,7 +89,7 @@ systemctl enable schedule-shift
 ```
 * Put a cron so that your users will receive e-mails:
 ```cron
-30 5 * * 1-5 python3 /opt/schedule-shift/scheduler.py notify all starting --send
+30 5 * * 1-5 cd /opt/schedule-shift && python3 scheduler.py notify all starting --send
 0 6 * * Tue expr `date +\%W` \% 2 > /dev/null || python3 /opt/schedule-shift/scheduler.py notify all starting --send # notify every second Tuesday
 ```
 

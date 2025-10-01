@@ -14,7 +14,7 @@ from flask import Flask, render_template, request
 from icalendar import Calendar as iCalendar, Event as iEvent
 from requests.exceptions import InvalidSchema
 
-from lib.config import Config
+from lib.config import Config, config
 from lib.notification import Notification
 
 __help__ = """[project_name] [shift state] [whom to write] [fallback e-mail], ...
@@ -55,7 +55,7 @@ Examples – send the notification:
 app = Flask("shift-schedule")
 e_mail_regex = re.compile(
     r'^[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,4})$')
-config = Config()
+
 
 def today():
     return datetime.today().date()
@@ -207,7 +207,7 @@ def cli():
     parser.add_argument('notify', help=__help__, nargs='+')
     args = parser.parse_args()
 
-    Config().verbose = True  # args.verbose
+    Config.verbose = True  # args.verbose
 
     if sys.argv[1] == "notify":
         events = get_events()

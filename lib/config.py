@@ -82,3 +82,5 @@ class Config:
     def get_member_mails(self, project):
         for member in self.projects[project]:
             yield self.get_mail(member)
+
+config = Config()

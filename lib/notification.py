@@ -7,7 +7,7 @@ from typing import Dict, Any
 
 from envelope import Envelope
 
-from lib.config import Config
+from lib.config import Config, config
 
 
 class Notification:
@@ -45,9 +45,9 @@ class Notification:
             subject += " (" + ",".join(self.subject) + ")"
 
         text = "<br>\r\n".join(self.text) + "<br>\r\n<br>\r\n" + \
-            f"Wanna plan <a href='{Config.config.get('general','application_url')}'>a shift</a>?"
+            f"Wanna plan <a href='{config.env.application_url}'>a shift</a>?"
 
-        e = (Envelope().from_(Config.config.get("general", "email_from"))
+        e = (Envelope().from_(config.env.email_from)
                        .to(self.email_to)
                        .subject(subject)
                        .message(text)
@@ -62,7 +62,7 @@ class Notification:
     @classmethod
     def send(cls, send=True):
         try:
-            smtp = Config.config.get("general", "smtp_server")
+            smtp = config.env.smtp_server
             with smtplib.SMTP(smtp) as cls.smtp:
                 for m in cls.mails.values():
                     m.build_mail(send)
